@@ -7,7 +7,7 @@ import json
 import re 
 import random
 
-from fastapi import FastAPI
+#from fastapi import FastAPI
 
 
 from datetime import datetime, timedelta
@@ -28,7 +28,7 @@ client = OpenAI(
 
 
 ####   conexión a la BD ####
-dbConnection = sqlite3.connect('DBPrueba.db')
+dbConnection = sqlite3.connect('sqlite3DB.db')
 cursor = dbConnection.cursor()
 
 preguntaIRT = [] 
@@ -39,10 +39,10 @@ usuarioId = -1
 
 ################################ endpoints ###############################
 
-app = FastAPI()
-@app.post("/preguntar")
-async  def preguntar():
-	return {"prueba": "primera prueba endpoints python"}
+#app = FastAPI()
+#@app.post("/preguntar")
+#async  def preguntar():
+#	return {"prueba": "primera prueba endpoints python"}
 
 
 
@@ -101,7 +101,7 @@ def sendMessage(message, GuardarHistorial, historial = "" ):
 			
 		historial.append( {"role":"user", "content" : message} )
 		resp = client.chat.completions.create(
-			model="Qwen/Qwen3-0.6B",
+			model="Qwen/Qwen2.5-7B-Instruct",
 			messages = historial, ##REVISAR AQUÍ <------------------------------------------------------
 			temperature=0.3,
 			max_tokens=2048
@@ -109,7 +109,8 @@ def sendMessage(message, GuardarHistorial, historial = "" ):
 	
 	else: 
 		resp = client.chat.completions.create(
-			model="Qwen/Qwen3-0.6B",
+			#model="Qwen/Qwen3-0.6B",
+			model="Qwen/Qwen2.5-7B-Instruct",
 			messages =  [{"role": "user", "content": message}],
 			temperature=0.3,
 			max_tokens=2048
@@ -216,7 +217,7 @@ def buscarSimilitud(message): #Retrieval. -> RAG, lee embeddings del tema selecc
 	tema = selectorTemas(message)
 	temaId = encontrarTemaId(tema)
 	#print("tema seleccionado: ",tema)
-	cursor.execute(query,(tema, ) )
+	cursor.execute(query,(temaId, ) )
 	chunks = cursor.fetchall()
 	similarities = []
 	aux = [] #lista auxiliar, realiza copia de los textos en orden para poder ampliar el contexto en siguientes pasos.
