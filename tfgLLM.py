@@ -6,7 +6,7 @@ import numpy
 import json
 import re 
 import random
-
+import sys
 #from fastapi import FastAPI
 
 
@@ -31,10 +31,22 @@ client = OpenAI(
 dbConnection = sqlite3.connect('sqlite3DB.db')
 cursor = dbConnection.cursor()
 
-preguntaIRT = [] 
 
+
+#preguntaIRT = [] 
 usuarioId = -1
 
+llms = {
+"1": "Qwen/Qwen3-0.6B", #versión ligera y simple
+"2": "Qwen/Qwen2.5-7B-Instruct" #versión más potente
+}
+
+
+if(len(sys.argv) >= 2):
+	print ("LLM escogido: "+sys.argv[1])
+	llmName = llms[sys.argv[1]]
+else: 
+	llmName = llms["1"] #versión por defecto, la de menos consumo.
 
 
 ################################ endpoints ###############################
@@ -101,16 +113,17 @@ def sendMessage(message, GuardarHistorial, historial = "" ):
 			
 		historial.append( {"role":"user", "content" : message} )
 		resp = client.chat.completions.create(
-			model="Qwen/Qwen2.5-7B-Instruct",
+			model=llmName,
 			messages = historial, ##REVISAR AQUÍ <------------------------------------------------------
 			temperature=0.3,
 			max_tokens=2048
+			
 		)
 	
 	else: 
 		resp = client.chat.completions.create(
 			#model="Qwen/Qwen3-0.6B",
-			model="Qwen/Qwen2.5-7B-Instruct",
+			model=llmName,
 			messages =  [{"role": "user", "content": message}],
 			temperature=0.3,
 			max_tokens=2048
