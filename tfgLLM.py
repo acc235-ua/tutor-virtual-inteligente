@@ -7,14 +7,8 @@ import json
 import re 
 import random
 import sys
-#from fastapi import FastAPI
-
-
 from datetime import datetime, timedelta
 
-#import itertools
-#import tensorflow as tf
-#import tensorflow_hub as hub
 
 
 ############ variables globales ################################
@@ -49,17 +43,6 @@ else:
 	llmName = llms["1"] #versión por defecto, la de menos consumo.
 
 
-################################ endpoints ###############################
-
-#app = FastAPI()
-#@app.post("/preguntar")
-#async  def preguntar():
-#	return {"prueba": "primera prueba endpoints python"}
-
-
-
-
-
 ##############  funciones auxiliares ##################################
 
 
@@ -83,7 +66,7 @@ def encontrarTemaId(temaNombre):
 	result = cursor.fetchone()
 	if result:
 		return result[0]
-	return None
+	return 
 
 def encontrarTemaNombre(temaId):
 	query = "SELECT nombre FROM Temarios WHERE id = ?"
@@ -91,21 +74,19 @@ def encontrarTemaNombre(temaId):
 	result = cursor.fetchone()
 	if result:
 		return result[0]
-	return None
+	print("Error: no se encontró el nombre del tema con id "+str(temaId))
+	return 
 
 ######################  LLM  ####################################
 
 def sendMessage(message, GuardarHistorial, historial = "" ):
 	n = 5
 
-	print("Mensaje a enviar al LLM: "+message)
 	if(len(historial) >= n):
 		#Para evitar superar el max_tokens, se borran mensajes antiguos del historial. 
 		auxHistorial = historial[0]
 		historial[:] = [auxHistorial] + historial[3:]
-		#print("CAMBIOS EN HISTORIAL!!!__->>", len(historial))
-		#for h in historial:
-		#	print("#####--->>>", h)
+
 	if GuardarHistorial: 
 		#if len(contexto) != 0 :
 		#	historial.append(  {"role":"user", "content" : "CONTEXTO A USAR PARA LA SIGUIENTE PREGUNTA:"+contexto } )
@@ -114,7 +95,7 @@ def sendMessage(message, GuardarHistorial, historial = "" ):
 		historial.append( {"role":"user", "content" : message} )
 		resp = client.chat.completions.create(
 			model=llmName,
-			messages = historial, ##REVISAR AQUÍ <------------------------------------------------------
+			messages = historial, 
 			temperature=0.3,
 			max_tokens=2048
 			
@@ -128,12 +109,10 @@ def sendMessage(message, GuardarHistorial, historial = "" ):
 			temperature=0.3,
 			max_tokens=2048
 		)
-	#print("RESPUESTA RAW:", resp)
 	respuestaMssg = resp.choices[0].message.content
 	respuestaMssg = respuestaMssg.split("</think>").pop().strip()  #Divido string en dos partes (pensamiento de la IA y su respuesta), me quedo solo la última y elimino espacios, saltos de línea etc
 	if GuardarHistorial:
 		historial.append({"role": "assistant", "content": respuestaMssg})
-	#print(respuestaMssg)
 	return respuestaMssg
 
 
@@ -170,7 +149,7 @@ def selectorTemas(message): #Seleccionar tema más probable
 		return
 
 	respuestaIA = sendMessage(promptEscogerTema, False)
-	#print("respuesta obtenida es: "+respuestaIA)
+	
 	temaEscogido = respuestaIA.split("</think>").pop().strip() 
 	return temaEscogido
 
@@ -180,7 +159,7 @@ def selectorTemas(message): #Seleccionar tema más probable
 def generarResumenes(consulta, historial):
 
 	tema = selectorTemas(consulta)
-	print("tema seleccionado: ",tema)
+	#print("tema seleccionado: ",tema)
 	datosPdf = obtenerDatosTema(tema) 
 	try:
 		with open("prompts/promptResumir.txt", "r", encoding="utf-8") as f:
@@ -219,12 +198,12 @@ def obtenerDatosTema(tema):
 ########################### RAG ##########################################################################################
 
 modelEmb = SentenceTransformer('all-MiniLM-L6-v2')
-UMBRAL = 0.5 #similitud míinima requerida
+UMBRAL = 0.5 #similitud mínima requerida
 #Retrieval -> semantic search
 #Augmented knowledge-> Inject into promt
 #Generation 
 
-def buscarSimilitud(message): #Retrieval. -> RAG, lee embeddings del tema seleccionado en el primer nivel
+def buscarSimilitud(message): #Retrieval. -> RAG, lee embeddings del tema seleccionado 
 	messageEmbedding = modelEmb.encode(message) #transformar mensaje a secuencia de números, gracias a un modelo externo
 	query = "select * from embeddings WHERE TemaId = ? ;"
 	tema = selectorTemas(message)
@@ -253,7 +232,7 @@ def buscarSimilitud(message): #Retrieval. -> RAG, lee embeddings del tema selecc
 	else:
 		topN = len(similarities)
 	
-	print("topN es", topN)
+#	print("topN es", topN)
 
 	for s in similarities[:topN]: #Guardamos las mejores similitudes y ampliamos su contexto
 
@@ -328,8 +307,7 @@ def generarPregunta(consulta, historial): #En lugar de usar retrieval, se devuel
 	
 
 	temaPregunta = selectorTemas(consulta)
-	print("tema: "+temaPregunta)
-	print("tema pregunta: "+temaPregunta)
+	
 	temaId = encontrarTemaId(temaPregunta)
 	query = "Select NivelConocimiento from Conocimientos WHERE UsuarioId = ? AND TemaId = ?"
 	cursor.execute(query, (usuarioId, temaId))
@@ -355,10 +333,9 @@ def generarPregunta(consulta, historial): #En lugar de usar retrieval, se devuel
 		return
 
 	respuesta = sendMessage(promptPreguntar,False,historial).strip()
-	print("RAW:"+respuesta)
+	
 
 	jsonLimpio = limpiar_respuesta_json(respuesta)
-	print(jsonLimpio)
 	if not jsonLimpio:
 		#raise ValueError("No se pudo extraer JSON")
 		print( "Error: no se pudo  generar correctamente su pregunta")
@@ -382,7 +359,7 @@ def cuestionario(consulta,historial):
 	numPreguntas = -1
 	n = 0
 	listaPalabras = consulta.split(" ")
-	for palabra in listaPalabras: 
+	for palabra in listaPalabras:
 		if palabra.isdigit() and n+1 < len(listaPalabras)  and listaPalabras[n+1] == "preguntas" or (palabra == "1")  and n+1 < len(listaPalabras) and listaPalabras[n+1] == "pregunta"  :
 			numPreguntas = int(palabra)
 		n += 1
@@ -407,10 +384,10 @@ def cuestionario(consulta,historial):
 			print("Error: no se pudo calcular el número de preguntas")
 			return
 	
-	print("numPreguntas: "+ str(numPreguntas))
+	#print("numPreguntas: "+ str(numPreguntas))
 	for i in range(0,numPreguntas) :
 
-			
+		#Determino el tipo de pregunta. Si el alumno no lo escribe de forma explícita, se elige aleatoriamente entre desarrollo o test.
 		if ("desarrollo" in listaPalabras):
 			tipoPregunta = "desarrollo"
 		elif ("test" in listaPalabras or "tests" in listaPalabras):
@@ -421,9 +398,7 @@ def cuestionario(consulta,historial):
 
 		if tipoPregunta == "desarrollo":
 			preguntaIRT = generarPregunta(consulta,historial)
-
 			#array con los datos: 0. pregunta , 1. valor a ,2. valor b, 3. tema pregunta
-			print(preguntaIRT[0])
 			respuesta = input()
 		
 			solucion = evaluarRespuesta(respuesta,historial, preguntaIRT)
@@ -434,8 +409,7 @@ def cuestionario(consulta,historial):
 			solucion = generarPreguntaTest(consulta, historial)
 
 		listaSolucion = solucion.split(" ")
-		print("soluencuestionario: " +str(listaSolucion))
-		if listaSolucion[0] == "CORRECTO:":
+		if listaSolucion[0] == "CORRECTO:" or listaSolucion[0] == "CORRECTO":
 			aciertos += 1
 	print("-----------------------------")
 	print ("Preguntas acertadas:"+ str(aciertos)+"/"+str(numPreguntas))
@@ -572,14 +546,12 @@ def nivel_bloom(theta_conocimiento):
         return 4  # Analizar
 
 
-
-
-
 def generarPreguntaTest(consulta, historial):
 	
 	temaPregunta = selectorTemas(consulta)
-	print("tema pregunta: "+temaPregunta)
+	
 	temaId = encontrarTemaId(temaPregunta)
+
 	query = "Select NivelConocimiento from Conocimientos WHERE UsuarioId = ? AND TemaId = ?"
 	cursor.execute(query, (usuarioId, temaId))
 	datos = cursor.fetchall()
@@ -591,7 +563,7 @@ def generarPreguntaTest(consulta, historial):
 
 	datosPdf = obtenerDatosTema(temaPregunta)
 	try:
-		with open("prompts/promptTest.txt", "r", encoding="utf-8") as f: #FALTA AÑADIR CONOCIMIENTO AL PROMPT !!!!
+		with open("prompts/promptTest.txt", "r", encoding="utf-8") as f: 
 
 			plantilla = f.read()
 			nivelBloom = nivel_bloom(conocimientoAlumno)
@@ -669,8 +641,8 @@ def mostrarPreguntaTest(preguntaTest):
 	cursor.execute(query,(cursor.lastrowid,usuarioId,evaluacion == "CORRECTO"))
 	dbConnection.commit()
 
-	preguntaIRT = [preguntaTest[0], a, b, temaPregunta] #preguntas tipo test, a = 1 , b = 0
-	actualizarNivelCononocimientoAlumno(evaluacion,preguntaIRT, temaPregunta, True, nivelSeguridad) 
+	preguntaIRT = [preguntaTest[0], a, b, temaPregunta] 
+	actualizarNivelCononocimientoAlumno(evaluacion,preguntaIRT, temaId, True, nivelSeguridad) 
 	return evaluacion
 
 
@@ -878,7 +850,7 @@ def seguimientoAlumno():
 		print("Estado de los temas que ha practicado: ")
 		print("---------------------------------------")
 	for asinatura in asignaturas:
-		print("--->",  asinatura)
+		
 		temaId = asinatura[0]
 		tema = encontrarTemaNombre(temaId)
 		conocimiento = asinatura[1]
@@ -899,8 +871,8 @@ def seguimientoAlumno():
 		queryPreguntasContar = "SELECT COUNT(*) FROM PreguntasUsuarios WHERE UsuarioId = ? AND Acierto = False"
 		cursor.execute(queryPreguntasContar, (usuarioId, ))
 		numPreguntasFalladas = cursor.fetchall()[0][0]
-		print("Número de preguntas acertadas sobre el tema: "+str(numPreguntasAcertadas))
-		print("Número de preguntas falladas sobre el tema: "+str(numPreguntasFalladas))
+		print("		Número de preguntas acertadas sobre el tema: "+str(numPreguntasAcertadas))
+		print("		Número de preguntas falladas sobre el tema: "+str(numPreguntasFalladas))
 		print("---------------------------------------")
 
 
@@ -939,7 +911,7 @@ def router(consulta,historial): #función encargada de redirigir a donde se debe
 			return 
 		tipoMensaje = sendMessage(promptRouter, False)	
 		tipoMensaje = tipoMensaje.split("</think>").pop()
-	print("-->", tipoMensaje)
+	
 	match tipoMensaje:
 		case  "NORMAL":
 			response = sendMessage(consulta,True, historial)
