@@ -12,9 +12,9 @@ Eres un asistente de enrutamiento para una plataforma educativa inteligente  uni
 
 						Instrucciones de Salida:
 
-							Responde únicamente con la palabra clave del flujo (NORMAL, RAG_INFO o RAG_EXAM).
+							Responde únicamente con la palabra clave del flujo (NORMAL, RAG_INFO, RAG_RESUME o RAG_EXAM).
 
-							No añadidas explicaciones ni puntuación extra.
+							Abstente de añadir explicaciones o puntuación extra.
 
 						Ejemplos (Few-Shot):
 

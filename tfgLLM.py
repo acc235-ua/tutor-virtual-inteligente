@@ -398,6 +398,7 @@ def cuestionario(consulta,historial):
 
 		if tipoPregunta == "desarrollo":
 			preguntaIRT = generarPregunta(consulta,historial)
+			print(preguntaIRT[0])
 			#array con los datos: 0. pregunta , 1. valor a ,2. valor b, 3. tema pregunta
 			respuesta = input()
 		
@@ -534,13 +535,13 @@ def irt(conocimientoAlumno, preguntaIRT,preguntaTest): ##fórmula de evaluación
 ######################################### PREGUNTAS TIPO TEST ############################################
 
 
-def nivel_bloom(theta_conocimiento):
+def nivel_bloom(conocimiento):
 	#Conforme un alumno avance en un tema  las preguntas irán subiendo al siguiente nivel dela taxonomía de Bloom.
-    if theta_conocimiento < 0.5:
+    if conocimiento < 0.5:
         return 1  # Recordar — inicio del tema
-    elif theta_conocimiento < 1.5:
+    elif conocimiento < 1.5:
         return 2  # Comprender
-    elif theta_conocimiento < 2.5:
+    elif conocimiento < 2.5:
         return 3  # Aplicar
     else:
         return 4  # Analizar
@@ -567,7 +568,7 @@ def generarPreguntaTest(consulta, historial):
 
 			plantilla = f.read()
 			nivelBloom = nivel_bloom(conocimientoAlumno)
-			promptTest = plantilla.replace("{Consulta}", consulta).replace("{datosPdf}" , datosPdf).replace("{conocimiento}",str(conocimientoAlumno)).replace("{nivelBloom}", str(nivelBloom))
+			promptTest = plantilla.replace("{Consulta}", consulta).replace("{datosPdf}" , datosPdf).replace("{conocimientoAlumno}",str(conocimientoAlumno)).replace("{nivelBloom}", str(nivelBloom))
 
 
 	except FileNotFoundError:
@@ -633,8 +634,8 @@ def mostrarPreguntaTest(preguntaTest):
 	
 
 	query = "INSERT INTO PREGUNTAS (Pregunta,TemaId,Tipo,Solucion,a,b) VALUES ( ? , ? ,? ,?, ?, ?);"
-	temaId = encontrarTemaId(temaPregunta) 
-	cursor.execute(query, (preguntaTest[0],temaId,"Test",solucion, nivelSeguridad, 0))
+	temaId = encontrarTemaId(temaPregunta)  
+	cursor.execute(query, (preguntaTest[0],temaId,"Test",solucion, a, b))
 	dbConnection.commit()
 
 	query = "INSERT INTO PreguntasUsuarios (PreguntaId,UsuarioId, Acierto) VALUES (?,? , ?) "
@@ -864,12 +865,12 @@ def seguimientoAlumno():
 		else:
 			print(tema+": El usuario ha acertado muchas preguntas sobre el tema."+str(conocimiento))
 		
-		queryPreguntasContar = "SELECT COUNT(*) FROM PreguntasUsuarios WHERE UsuarioId = ? AND Acierto = True"
-		cursor.execute(queryPreguntasContar, (usuarioId, ))
+		queryPreguntasContar = "SELECT COUNT(*) FROM PreguntasUsuarios WHERE UsuarioId = ? AND Acierto = True AND PreguntaId IN (SELECT id FROM Preguntas WHERE TemaId = ?)"
+		cursor.execute(queryPreguntasContar, (usuarioId, temaId))
 		numPreguntasAcertadas = cursor.fetchall()[0][0]
 
-		queryPreguntasContar = "SELECT COUNT(*) FROM PreguntasUsuarios WHERE UsuarioId = ? AND Acierto = False"
-		cursor.execute(queryPreguntasContar, (usuarioId, ))
+		queryPreguntasContar = "SELECT COUNT(*) FROM PreguntasUsuarios WHERE UsuarioId = ? AND Acierto = False AND PreguntaId IN (SELECT id FROM Preguntas WHERE TemaId = ?)"
+		cursor.execute(queryPreguntasContar, (usuarioId, temaId))
 		numPreguntasFalladas = cursor.fetchall()[0][0]
 		print("		Número de preguntas acertadas sobre el tema: "+str(numPreguntasAcertadas))
 		print("		Número de preguntas falladas sobre el tema: "+str(numPreguntasFalladas))
