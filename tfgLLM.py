@@ -9,6 +9,10 @@ import random
 import sys
 from datetime import datetime, timedelta
 
+import chainlit as cl
+from chainlit.input_widget import TextInput
+
+
 
 
 ############ variables globales ################################
@@ -30,15 +34,25 @@ cursor = dbConnection.cursor()
 #preguntaIRT = [] 
 usuarioId = -1
 
+
+
+## parámetros por consola ##
 llms = {
 "1": "Qwen/Qwen3-0.6B", #versión ligera y simple
 "2": "Qwen/Qwen2.5-7B-Instruct" #versión más potente
 }
 
-
-if(len(sys.argv) >= 2):
-	print ("LLM escogido: "+sys.argv[1])
-	llmName = llms[sys.argv[1]]
+llmName = ""
+if(len(sys.argv) >= 3):
+	
+	for n in range(0, len(sys.argv)):
+		if sys.argv[n] == "-llm" and sys.argv[n+1] in llms:
+			print ("LLM escogido: "+llms[sys.argv[n+1]])
+			llmName = llms[sys.argv[n+1]]
+			break
+	if llmName == "":
+		print ("LLM no reconocido, se usará la versión por defecto: "+llms["1"])
+		llmName = llms["1"]
 else: 
 	llmName = llms["1"] #versión por defecto, la de menos consumo.
 
@@ -591,11 +605,11 @@ def generarPreguntaTest(consulta, historial):
 	preguntaTest.append(temaPregunta)
 	preguntaTest.append(data["a"])
 	preguntaTest.append(data["b"])
-	return mostrarPreguntaTest(preguntaTest)
+	return mostrarPreguntaTest(preguntaTest,True)
 
 
 
-def mostrarPreguntaTest(preguntaTest):
+def mostrarPreguntaTest(preguntaTest, nuevaPregunta = True):
 	
 	print("Pregunta: "+preguntaTest[0])
 	print("A: "+preguntaTest[1])
@@ -631,20 +645,24 @@ def mostrarPreguntaTest(preguntaTest):
 	else:
 		evaluacion = "FALSO"
 		print("Respuesta incorrecta. La respuesta correcta es: "+solucion)
-	
 
-	query = "INSERT INTO PREGUNTAS (Pregunta,TemaId,Tipo,Solucion,a,b) VALUES ( ? , ? ,? ,?, ?, ?);"
 	temaId = encontrarTemaId(temaPregunta)  
-	cursor.execute(query, (preguntaTest[0],temaId,"Test",solucion, a, b))
-	dbConnection.commit()
+	if nuevaPregunta:
 
-	query = "INSERT INTO PreguntasUsuarios (PreguntaId,UsuarioId, Acierto) VALUES (?,? , ?) "
-	cursor.execute(query,(cursor.lastrowid,usuarioId,evaluacion == "CORRECTO"))
-	dbConnection.commit()
+		query = "INSERT INTO PREGUNTAS (Pregunta,TemaId,Tipo,Solucion,a,b, OpcionA, OpcionB, OpcionC, OpcionD) VALUES ( ? , ? ,? ,?, ?, ?, ?, ?, ?, ?);"
+		cursor.execute(query, (preguntaTest[0],temaId,"Test",solucion, a, b, preguntaTest[1], preguntaTest[2], preguntaTest[3], preguntaTest[4]))
+		dbConnection.commit()
+
+		query = "INSERT INTO PreguntasUsuarios (PreguntaId,UsuarioId, Acierto) VALUES (?,? , ?) "
+		cursor.execute(query,(cursor.lastrowid,usuarioId,evaluacion == "CORRECTO"))
+		dbConnection.commit()
 
 	preguntaIRT = [preguntaTest[0], a, b, temaPregunta] 
 	actualizarNivelCononocimientoAlumno(evaluacion,preguntaIRT, temaId, True, nivelSeguridad) 
 	return evaluacion
+	#else:
+	#	actualizarNivelCononocimientoAlumno(evaluacion,preguntaTest, temaId, True, nivelSeguridad) #PREGUNTA REPETIDA, ¿¿ DEBE AFECTAR EVALUACIÓN ?? 
+	#	return evaluacion
 
 
 
@@ -732,7 +750,7 @@ def seleccionarTemasARecordar(historial) :
 	hoy = datetime.strptime("2020/4/13", '%Y/%m/%d').date()
 
 	for dato in datos: 
-
+		
 		if len(dato) != 2:
 			print("Error grave")
 		nombreTema = dato[0]
@@ -760,7 +778,7 @@ def seleccionarTemasARecordar(historial) :
 def recordarTemas( temasRecordar,historial) :
 
 	#Se hace al usuario una bateria de las preguntas que ha hecho anteriormente sobre un tema/temas concreto
-	query = "SELECT p.Pregunta, p.Solucion, p.a, p.b, p.ID FROM Preguntas p JOIN PreguntasUsuarios pu ON pu.PreguntaId = p.id WHERE p.TemaId = ? AND pu.UsuarioId = ? ;"
+	query = "SELECT p.Pregunta, p.Solucion, p.a, p.b, p.ID ,p.Tipo,p.OpcionA, p.OpcionB, p.OpcionC, p.OpcionD FROM Preguntas p JOIN PreguntasUsuarios pu ON pu.PreguntaId = p.id WHERE p.TemaId = ? AND pu.UsuarioId = ? ;"
 	for tema in temasRecordar:
 		temaId = encontrarTemaId(tema)
 		cursor.execute(query, (temaId,usuarioId ))
@@ -769,19 +787,49 @@ def recordarTemas( temasRecordar,historial) :
 			print("No hay preguntas a repasar por ahora sobre el tema "+tema)
 		else: 
 			aciertos = 0
-			for dato in datos:	
-				if len(dato) != 5:
+			for dato in datos:
+				print("dato")	
+				print(dato)
+				if len(dato) != 6 and len(dato) != 10:
 					print("Error grave")
 					return
 				preguntaIRT = [ dato[0], dato[2], dato[3], tema]
 				respuestaEsperada = dato[1]
 				preguntaId = dato[4]
-				print(dato[0])
-				respuestaAlumno = input()
+				tipoPregunta = dato[5]
+				
+				if tipoPregunta == "Desarrollo":
+					print(dato[0])
+					respuestaAlumno = input()
 				
 				
-				alumnoAcierta = compararSoluciones(preguntaIRT, respuestaEsperada, respuestaAlumno,historial)
+					alumnoAcierta = compararSoluciones(preguntaIRT, respuestaEsperada, respuestaAlumno,historial)
 
+				elif tipoPregunta == "Test":
+					preguntaTest = []
+					preguntaTest.append(dato[0])
+					preguntaTest.append(dato[6])
+					preguntaTest.append(dato[7])
+					preguntaTest.append(dato[8])
+					preguntaTest.append(dato[9])
+					preguntaTest.append(dato[1])
+					preguntaTest.append(tema)
+					preguntaTest.append(dato[2])
+					preguntaTest.append(dato[3])
+
+					resultadoTest = mostrarPreguntaTest(preguntaTest, False)
+					if resultadoTest == "CORRECTO":
+						alumnoAcierta = True
+					else:
+						alumnoAcierta = False
+
+					#respuesta  = input().strip().upper()
+					#if respuestaEsperada.strip().upper() == respuesta:
+					#	alumnoAcierta = True
+					#	print("¡Respuesta correcta!")
+				else:
+					print("Error: tipo de pregunta no reconocido")
+					return
 				if alumnoAcierta : 
 					aciertos += 1
 				else:
@@ -916,12 +964,15 @@ def router(consulta,historial): #función encargada de redirigir a donde se debe
 	match tipoMensaje:
 		case  "NORMAL":
 			response = sendMessage(consulta,True, historial)
+			return response
 			print(response)
 		case "RAG_EXAM":
 			cuestionario(consulta, historial)
+			return "esto va a ser más complicado"
 		case "RAG_RESUME":
 			response = generarResumenes(consulta,historial)
 			print(response)
+			return response
 		case "RAG_INFO": 
 				#Buscar contexto con RAG y responder la pregunta del usuario con la información extraida de los PDF.
 				chunks = buscarSimilitud(consulta) #Retrieval de RAG
@@ -941,9 +992,11 @@ def router(consulta,historial): #función encargada de redirigir a donde se debe
 
 				response = sendMessage(promptInformar,True,historial) #Generation
 				print(response)
+				return response
 
 		case _:
 			print("ERROR")
+			return "error"
 
 def chat(historial, recordarUnaVez):
 	print("-------------------------------------------------------------------------------")
@@ -1001,7 +1054,7 @@ def menu(historial, recordarUnaVez):
 		else:
 			print("Elija una opcion correcta")
 
-def main():
+def mainConsole():
 	recordarUnaVez =True #Variable booleana que comprueba que el recordatorio solo se llame una vez
 	historial = [
 		{"role":"system", "content":"""Eres un chatbot dentro de una plataforma educativa inteligente universitaria centrada en la ingeniería informática, y en español. Eres útil y honesto, NO inventas información ni mientes, si  no sabes una respuesta lo dices. 
@@ -1015,11 +1068,62 @@ def main():
 		menu(historial, recordarUnaVez)
 	else:
 		print("ERROR DURANTE EL LOGIN")
-		main()
+		mainConsole()
 
+
+
+########## interfaz gráfica chainlit ############################
+
+
+@cl.password_auth_callback
+def auth(username: str, password: str):
+
+	#nota: chainlit no cuenta con pantalla de registro, debe realizarse desde la app en modo consola o directamente en la BD.
+	query = "Select id from Usuarios WHERE Nombre = ? AND Contrasena = ?"
+	cursor.execute(query, (username,password))
+	datos = cursor.fetchall()
+	if len(datos) == 0:
+		print("Error: Usuario no registrado")
+		return None
+	else:
+		usuarioId = datos[0][0]
+		print("Username: "+username)
+		return cl.User(identifier=username, metadata={"role":"user", "userId": usuarioId}) #login correcto
+    
+
+@cl.on_message
+async def main(message: cl.Message):
+	historial = [ {"role":"system", "content":"""Eres un chatbot dentro de una plataforma educativa inteligente universitaria centrada en la ingeniería informática, y en español. 
+					Eres útil y honesto, NO inventas información ni mientes, si  no sabes una respuesta lo dices. 
+					Pueden darte, contexto, información o instrucciones adicionale. DEBES USAR CUALQUIER INFORMACIÓN QUE RECIBAS PARA GENERAR TUS RESPUESTAS Y SEGUIR LAS INSTRUCCIONES QUE RECIBAS. 
+					Ten en cuenta que el contexto y las reglas solo sirven para generar tu respuesta si es el último mensaje,NO LO USES EN SIGUIENTES MENSAJES DESPUÉS DE HABERLO USADO."""}]
+	respuesta = router(message.content, historial)
+	#await cl.Message(content=f"Hola {cl.context.session.user.identifier}!").send()
+	await cl.Message(content=respuesta).send()
+	
+@cl.on_chat_start
+async def inicio():
+	# Se ejecuta cuando el usuario abre el chat
+	await cl.Message( content="Bienvenido! Soy un tutor virtual inteligente, mi objetivo es ayudarte con PPSS, ¿ En qué puedo ayudarte hoy?").send()
+
+	if cl.context.session.user:
+		userId =cl.context.session.user.metadata["userId"] 
+		print("Usuario: "+ userId)
+	
+
+
+
+
+@cl.on_stop
+async def stop():
+	print("Mensaje detenido, sin implementar por ahora")
+@cl.on_chat_end
+async def fin():
+	# Se ejecuta cuando el usuario cierra el chat
+	print("Chat cerrado")
 
 if __name__ == '__main__':
-	main()
+	mainConsole()
 
 
 
