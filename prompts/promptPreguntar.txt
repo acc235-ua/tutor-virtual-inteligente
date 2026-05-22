@@ -9,8 +9,15 @@
 
 								INSTRUCCIONES:
 
+						-Para generar la pregunta debes usar el nivel de la taxonomía de bloom: {nivelBloom} y contruir la pregunta siguiendo esos princpios.
+						Niveles de bloom:
+						1. Recordar: usar la memoria literal.
+						2. Comprender: entender el signficiado y propósito
+						3. Aplicar: Transferir el conocimiento a situcaciones nuevas
+						4. Analizar: Comparar y distinguir las ideas que componen el conocimiento que se estudia.
+
 								- Genera UNA única pregunta relacionada con la consulta del alumno, utilizando la información proporcionada para ello. Es importante que la pregunta sea creada y pueda ser  respondida con la información de apoyo recibida.
-								- NO incluyas la respuesta a la pregunta.
+								- Abstente de incluir la respuesta a la pregunta en tu enunciado.
 								- La pregunta debe ser:
 									- Clara
 									- Directa
