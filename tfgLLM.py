@@ -14,7 +14,6 @@ from chainlit.input_widget import TextInput
 
 
 
-
 ############ variables globales ################################
 
 ### llm ###
@@ -314,7 +313,6 @@ def generarEmbedingsTemas():
 			dbConnection.commit()
 
 
-
 ############################## PREGUNTAR ###############################################################################################
 
 def generarPregunta(consulta, historial): #En lugar de usar retrieval, se devuelve el temario seleccionado completo.
@@ -365,14 +363,10 @@ def generarPregunta(consulta, historial): #En lugar de usar retrieval, se devuel
 
 
 
-def cuestionario(consulta,historial):
-	## 1. Calcular número de preguntas a realizar al usuario.
-	## 2. Generar las preguntas.
-	## 3. Comprobar respuestas y actualizar el conocimiento que el sistema tiene sobre el alumno.
-	aciertos = 0
+def calcularNumeroPreguntasCuestionario(consulta,listaPalabras):
+
 	numPreguntas = -1
 	n = 0
-	listaPalabras = consulta.split(" ")
 	for palabra in listaPalabras:
 		if palabra.isdigit() and n+1 < len(listaPalabras)  and listaPalabras[n+1] == "preguntas" or (palabra == "1")  and n+1 < len(listaPalabras) and listaPalabras[n+1] == "pregunta"  :
 			numPreguntas = int(palabra)
@@ -397,11 +391,27 @@ def cuestionario(consulta,historial):
 		else:
 			print("Error: no se pudo calcular el número de preguntas")
 			return
-	
-	#print("numPreguntas: "+ str(numPreguntas))
+	return numPreguntas
+
+async def cuestionario(consulta,historial, desdeConsola = True):
+	## 1. Calcular número de preguntas a realizar al usuario.
+	## 2. Generar las preguntas.
+	## 3. Comprobar respuestas y actualizar el conocimiento que el sistema tiene sobre el alumno.
+
+	aciertos = 0
+	listaPalabras = consulta.split(" ")
+
+	if ("desarrollo" in listaPalabras):
+		tipoPreguntas = "desarrollo"
+	elif ("test" in listaPalabras or "tests" in listaPalabras):
+		tipoPreguntas = "test"
+	else: 
+		tipoPreguntas = "ramdon"
+	numPreguntas = calcularNumeroPreguntasCuestionario(consulta, listaPalabras)
+
+	numPreguntas = calcularNumeroPreguntasCuestionario(consulta, listaPalabras)
 	for i in range(0,numPreguntas) :
 
-		#Determino el tipo de pregunta. Si el alumno no lo escribe de forma explícita, se elige aleatoriamente entre desarrollo o test.
 		if ("desarrollo" in listaPalabras):
 			tipoPregunta = "desarrollo"
 		elif ("test" in listaPalabras or "tests" in listaPalabras):
@@ -410,25 +420,46 @@ def cuestionario(consulta,historial):
 			tipoPregunta = random.choice(["desarrollo", "test"])
 
 
-		if tipoPregunta == "desarrollo":
+		if tipoPregunta == "desarrollo": #array con los datos: 0. pregunta , 1. valor a ,2. valor b, 3. tema pregunta
+			
 			preguntaIRT = generarPregunta(consulta,historial)
-			print(preguntaIRT[0])
-			#array con los datos: 0. pregunta , 1. valor a ,2. valor b, 3. tema pregunta
-			respuesta = input()
+			if desdeConsola:
+				print(preguntaIRT[0])
+				respuesta = input()
+				solucion = evaluarRespuesta(respuesta,historial, preguntaIRT)
+				print(solucion)
+			else: 
+				respuesta = await cl.AskUserMessage(
+					content = preguntaIRT[0],
+					timeout = 6000
+
+				).send()
+				solucion = evaluarRespuesta(respuesta["output"],historial, preguntaIRT)
+				
+				await cl.Message( content = solucion).send()
 		
-			solucion = evaluarRespuesta(respuesta,historial, preguntaIRT)
-			print(solucion)
 
 			
 		elif tipoPregunta == "test":
-			solucion = generarPreguntaTest(consulta, historial)
 
-		listaSolucion = solucion.split(" ")
-		if listaSolucion[0] == "CORRECTO:" or listaSolucion[0] == "CORRECTO":
+			preguntaTest = generarPreguntaTest(consulta, historial)
+			if desdeConsola:
+				solucion = await mostrarPreguntaTest(preguntaTest,True)
+			else:
+				solucion = await mostrarPreguntaTestChainlit(preguntaTest,True)
+
+
+
+		if solucion.startswith("CORRECTO"):
 			aciertos += 1
-	print("-----------------------------")
-	print ("Preguntas acertadas:"+ str(aciertos)+"/"+str(numPreguntas))
-	print("-----------------------------")
+		if desdeConsola:
+			print("-----------------------------")
+			print ("Preguntas acertadas:"+ str(aciertos)+"/"+str(numPreguntas))
+			print("-----------------------------")
+
+		else: 
+			
+			return  "Preguntas acertadas:"+ str(aciertos)+"/"+str(numPreguntas)
 
 
 
@@ -605,20 +636,19 @@ def generarPreguntaTest(consulta, historial):
 	preguntaTest.append(temaPregunta)
 	preguntaTest.append(data["a"])
 	preguntaTest.append(data["b"])
-	return mostrarPreguntaTest(preguntaTest,True)
+	return preguntaTest
+	#mostrarPreguntaTest(preguntaTest,True)
 
 
 
-def mostrarPreguntaTest(preguntaTest, nuevaPregunta = True):
+async def mostrarPreguntaTest(preguntaTest, nuevaPregunta = True): ###booleano para indicar si hay que guardar en bd la pregunta
 	
 	print("Pregunta: "+preguntaTest[0])
 	print("A: "+preguntaTest[1])
 	print("B: "+preguntaTest[2])
 	print("C: "+preguntaTest[3])
 	print("D: "+preguntaTest[4])
-	temaPregunta = preguntaTest[6]
-	a = preguntaTest[7]
-	b = preguntaTest[8]
+	
 	alumnoRespuesta = ""
 	while alumnoRespuesta != "A" and alumnoRespuesta != "B" and alumnoRespuesta != "C" and alumnoRespuesta != "D":
 		print("Escriba la letra de la opción que considere correcta: ")
@@ -636,19 +666,34 @@ def mostrarPreguntaTest(preguntaTest, nuevaPregunta = True):
 
 
 	nivelSeguridad = int(nivelSeguridad)
+	
+	return await compararRespuestasTest(alumnoRespuesta, nivelSeguridad, preguntaTest, nuevaPregunta)
+
+async def compararRespuestasTest(alumnoRespuesta, nivelSeguridad, preguntaTest, nuevaPregunta = True, desdeConsola = True):
+
 	solucion = preguntaTest[5].strip().upper()
+	print("AL ACABAR AQUÍ ME LLEGA: "+ str(preguntaTest))
+	temaPregunta = preguntaTest[6]
+	a = preguntaTest[7]
+	b = preguntaTest[8]
 
 	if(alumnoRespuesta == solucion):
-		
-		print("¡Respuesta correcta!")
+		if desdeConsola: 
+			print("¡Respuesta correcta!")
+		else: 
+			await  cl.Message(content = "¡Respuesta correcta!").send()
+
 		evaluacion = "CORRECTO"
 	else:
 		evaluacion = "FALSO"
-		print("Respuesta incorrecta. La respuesta correcta es: "+solucion)
+		if desdeConsola:
+			print("Respuesta incorrecta. La respuesta correcta es la opción: "+solucion)
+		else:
+			await cl.Message(content = "Respuesta incorrecta. La respuesta correcta es la opción "+solucion ).send()
 
 	temaId = encontrarTemaId(temaPregunta)  
 	if nuevaPregunta:
-
+		print("INSERTO AQUÍ")
 		query = "INSERT INTO PREGUNTAS (Pregunta,TemaId,Tipo,Solucion,a,b, OpcionA, OpcionB, OpcionC, OpcionD) VALUES ( ? , ? ,? ,?, ?, ?, ?, ?, ?, ?);"
 		cursor.execute(query, (preguntaTest[0],temaId,"Test",solucion, a, b, preguntaTest[1], preguntaTest[2], preguntaTest[3], preguntaTest[4]))
 		dbConnection.commit()
@@ -656,7 +701,7 @@ def mostrarPreguntaTest(preguntaTest, nuevaPregunta = True):
 		query = "INSERT INTO PreguntasUsuarios (PreguntaId,UsuarioId, Acierto) VALUES (?,? , ?) "
 		cursor.execute(query,(cursor.lastrowid,usuarioId,evaluacion == "CORRECTO"))
 		dbConnection.commit()
-
+		print("ANTES DE ACTUALIZAR CONOCIMIENTO")
 	preguntaIRT = [preguntaTest[0], a, b, temaPregunta] 
 	actualizarNivelCononocimientoAlumno(evaluacion,preguntaIRT, temaId, True, nivelSeguridad) 
 	return evaluacion
@@ -740,7 +785,7 @@ def pasanDosSemanas(hoy,origen):
 		return False
 
 
-def seleccionarTemasARecordar(historial) : 
+async def seleccionarTemasARecordar(historial, desdeConsola =  True) : 
 
 	query = "SELECT nombre,fecha FROM Temarios;"
 	cursor.execute(query)
@@ -765,17 +810,28 @@ def seleccionarTemasARecordar(historial) :
 
 	if( len(temasRecordar) >0 ):
 		eleccionUsuario = ""
-		while( eleccionUsuario != "s" and eleccionUsuario != "n" ):	
-			print("Hoy, se cumplen "+ str(semanas.days) + " semanas desde que en clase se terminó de estudiar los temas: " + str(temasRecordar) + " . ¿Desea repasar estos temarios?. (Escriba S o N)")
-			eleccionUsuario = input().lower()
-			if( eleccionUsuario != "s" and eleccionUsuario != "n" ):
-				print("Escriba S o N")
-			elif(eleccionUsuario == "s"):
-				recordarTemas(temasRecordar,historial)
+		if desdeConsola:
+			while( eleccionUsuario != "s" and eleccionUsuario != "n" ):	
+				print("Hoy, se cumplen "+ str(semanas.days) + " semanas desde que en clase se terminó de estudiar los temas: " + str(temasRecordar) + " . ¿Desea repasar estos temarios?. (Escriba S o N)")
+				eleccionUsuario = input().lower()
+				if( eleccionUsuario != "s" and eleccionUsuario != "n" ):
+					print("Escriba S o N")
+				elif(eleccionUsuario == "s"):
+					await recordarTemas(temasRecordar,historial)
+		else:  #si llamamos desde la interfaz gráfica.
+			await cl.Message(content="Hoy, se cumplen "+ str(semanas.days) + " semanas desde que en clase se terminó de estudiar los temas: " + str(temasRecordar) + " . ¿Desea repasar estos temarios?").send()
+			eleccionUsuario = {"output": ""}
+			while eleccionUsuario["output"].lower() not in ("s", "n", "sí","si","no"):
+				eleccionUsuario = await cl.AskUserMessage(content="Escriba sí o no", timeout=600).send()
+				if eleccionUsuario is None:  # timeout
+					return
 
+			if eleccionUsuario["output"].lower() in ("sí","si","s"):
+				#await cl.Message(content="¡Perfecto! Vamos a repasar los temas: " + str(temasRecordar)).send()
+				await recordarTemas(temasRecordar,historial, False)
 			
 	
-def recordarTemas( temasRecordar,historial) :
+async  def recordarTemas( temasRecordar,historial, desdeConsola = True): 
 
 	#Se hace al usuario una bateria de las preguntas que ha hecho anteriormente sobre un tema/temas concreto
 	query = "SELECT p.Pregunta, p.Solucion, p.a, p.b, p.ID ,p.Tipo,p.OpcionA, p.OpcionB, p.OpcionC, p.OpcionD FROM Preguntas p JOIN PreguntasUsuarios pu ON pu.PreguntaId = p.id WHERE p.TemaId = ? AND pu.UsuarioId = ? ;"
@@ -788,8 +844,8 @@ def recordarTemas( temasRecordar,historial) :
 		else: 
 			aciertos = 0
 			for dato in datos:
-				print("dato")	
-				print(dato)
+				#print("dato")	
+				#print(dato)
 				if len(dato) != 6 and len(dato) != 10:
 					print("Error grave")
 					return
@@ -799,11 +855,17 @@ def recordarTemas( temasRecordar,historial) :
 				tipoPregunta = dato[5]
 				
 				if tipoPregunta == "Desarrollo":
-					print(dato[0])
-					respuestaAlumno = input()
+					if desdeConsola:
+						print(dato[0])
+						respuestaAlumno = input()
+						alumnoAcierta =await compararSoluciones(preguntaIRT, respuestaEsperada, respuestaAlumno,historial)
+
+					else:
+						respuestaAlumno = await cl.AskUserMessage(content= dato[0], timeout = 6000).send()
+						alumnoAcierta = await compararSoluciones(preguntaIRT, respuestaEsperada, respuestaAlumno["output"], historial, False)
+
 				
 				
-					alumnoAcierta = compararSoluciones(preguntaIRT, respuestaEsperada, respuestaAlumno,historial)
 
 				elif tipoPregunta == "Test":
 					preguntaTest = []
@@ -816,8 +878,10 @@ def recordarTemas( temasRecordar,historial) :
 					preguntaTest.append(tema)
 					preguntaTest.append(dato[2])
 					preguntaTest.append(dato[3])
-
-					resultadoTest = mostrarPreguntaTest(preguntaTest, False)
+					if desdeConsola:
+						resultadoTest = mostrarPreguntaTest(preguntaTest, False)
+					else:
+						resultadoTest = await mostrarPreguntaTestChainlit(preguntaTest, False)
 					if resultadoTest == "CORRECTO":
 						alumnoAcierta = True
 					else:
@@ -833,23 +897,29 @@ def recordarTemas( temasRecordar,historial) :
 				if alumnoAcierta : 
 					aciertos += 1
 				else:
-					print(respuestaEsperada)
+					if desdeConsola:
+						print(respuestaEsperada)
+					else:
+						await cl.Message(content=respuestaEsperada).send()
 
 				queryActualizar = "UPDATE PreguntasUsuarios SET Acierto = ? WHERE UsuarioId = ? AND PreguntaId = ?"
 				cursor.execute(queryActualizar, (alumnoAcierta, usuarioId, preguntaId))
 				dbConnection.commit()
-			
-			print("------------------------------------")
-			print("Evaluación del repaso del tema "+tema)
-			print("------------------------------------")
-			print("Has acertado: "+str(aciertos) + " / "+str(len(datos)))
-			print("------------------------------------")
-	
+			if desdeConsola:
+				print("------------------------------------")
+				print("Evaluación del repaso del tema "+tema)
+				print("------------------------------------")
+				print("Has acertado: "+str(aciertos) + " / "+str(len(datos)))
+				print("------------------------------------")
+			else:
+				await cl.Message("Has acertado: "+str(aciertos)+ " / "+str(len(datos)) ).send()
+					
 
 
 
 
-def compararSoluciones(preguntaIRT, respuestaEsperada, respuestaAlumno,historial):
+
+async def compararSoluciones(preguntaIRT, respuestaEsperada, respuestaAlumno,historial, desdeConsola = True):
 
 	try:
 		with open("prompts/promptCompararRespuestas.txt", "r", encoding="utf-8") as f:
@@ -866,7 +936,10 @@ def compararSoluciones(preguntaIRT, respuestaEsperada, respuestaAlumno,historial
 	jsonLimpio = limpiar_respuesta_json(respuesta)
 	data = json.loads(jsonLimpio)
 	evaluacion = data["Evaluacion"]
-	print(evaluacion)
+	if desdeConsola:
+		print(evaluacion)
+	else: 
+		await cl.Message(content= evaluacion).send()
 	temaId = encontrarTemaId (preguntaIRT[3]) 
 
 	#queryPeguntasUsuarios = "SELECT Acierto FROM PreguntasUsuarios WHERE UsuarioId = ? AND PreguntaId = ?"
@@ -937,7 +1010,7 @@ def seguimientoAlumno():
 
 
 
-def router(consulta,historial): #función encargada de redirigir a donde se debe tratar el mensaje, según su contenido.
+async def router(consulta,historial,llamadaDesdeConsola = False): #función encargada de redirigir a donde se debe tratar el mensaje, según su contenido.
 	response = ""
 	consulta = consulta.lower() #quitar mayúsculas para poder simplificar la detección de palabras clave del router
 		#si se detecta alguna estructura que sea "HAZME UNA PREGUNTA" , "PREGÚNTAME" ... , no es necesario usar el prompt, es obvio lo que quiere el usuario.
@@ -967,8 +1040,13 @@ def router(consulta,historial): #función encargada de redirigir a donde se debe
 			return response
 			print(response)
 		case "RAG_EXAM":
-			cuestionario(consulta, historial)
-			return "esto va a ser más complicado"
+			if llamadaDesdeConsola:
+				cuestionario(consulta, historial, llamadaDesdeConsola)
+
+			else:
+				return await cuestionario(consulta, historial, llamadaDesdeConsola)
+
+			
 		case "RAG_RESUME":
 			response = generarResumenes(consulta,historial)
 			print(response)
@@ -998,7 +1076,7 @@ def router(consulta,historial): #función encargada de redirigir a donde se debe
 			print("ERROR")
 			return "error"
 
-def chat(historial, recordarUnaVez):
+async def chat(historial, recordarUnaVez):
 	print("-------------------------------------------------------------------------------")
 	print("\n")
 	print("                               CHAT CON QWEN")
@@ -1007,7 +1085,7 @@ def chat(historial, recordarUnaVez):
 	print("-------------------------------------------------------------------------------")
 
 	if recordarUnaVez :
-		seleccionarTemasARecordar(historial)
+		await seleccionarTemasARecordar(historial)
 		recordarUnaVez = False
 		print("..............................")
 	print("Bienvenido! Soy un tutor virtual inteligente, mi objetivo es ayudarte con ppss")
@@ -1017,14 +1095,14 @@ def chat(historial, recordarUnaVez):
 
 	while(consulta != "0"):
 	
-		router(consulta,historial)
+		router(consulta,historial, True)
 		print("..................................")
 		consulta = input()
 		print("..................................")
 		
 
 	return recordarUnaVez #devuelvo el valor para actualizarlo en el menú principal y que afecte a futuras llamadas ala función. 
-def menu(historial, recordarUnaVez):
+async def menu(historial, recordarUnaVez):
 	option =  "0"
 	while(option != "4"):
 		print("######################################################")
@@ -1039,22 +1117,17 @@ def menu(historial, recordarUnaVez):
 
 		option = input()
 		if(option  == "1"):
-			recordarUnaVez = chat(historial, recordarUnaVez)
-			
+			recordarUnaVez = await  chat(historial, recordarUnaVez)
 		elif(option == "2"):
 			seguimientoAlumno()
 		elif(option == "3"):
-			
 			generarEmbedingsTemas()
 		elif(option == "4" ):
 			print("¡Adiós!")
-		elif(option == "5"):
-			generarPreguntaTest("Quiero una pregunta tipo test sobre el tema 2", historial)
-			
 		else:
 			print("Elija una opcion correcta")
 
-def mainConsole():
+async def mainConsole():
 	recordarUnaVez =True #Variable booleana que comprueba que el recordatorio solo se llame una vez
 	historial = [
 		{"role":"system", "content":"""Eres un chatbot dentro de una plataforma educativa inteligente universitaria centrada en la ingeniería informática, y en español. Eres útil y honesto, NO inventas información ni mientes, si  no sabes una respuesta lo dices. 
@@ -1074,7 +1147,10 @@ def mainConsole():
 
 ########## interfaz gráfica chainlit ############################
 
-
+historial = [ {"role":"system", "content":"""Eres un chatbot dentro de una plataforma educativa inteligente universitaria centrada en la ingeniería informática, y en español. 
+					Eres útil y honesto, NO inventas información ni mientes, si  no sabes una respuesta lo dices. 
+					Pueden darte, contexto, información o instrucciones adicionale. DEBES USAR CUALQUIER INFORMACIÓN QUE RECIBAS PARA GENERAR TUS RESPUESTAS Y SEGUIR LAS INSTRUCCIONES QUE RECIBAS. 
+					Ten en cuenta que el contexto y las reglas solo sirven para generar tu respuesta si es el último mensaje,NO LO USES EN SIGUIENTES MENSAJES DESPUÉS DE HABERLO USADO."""}]
 @cl.password_auth_callback
 def auth(username: str, password: str):
 
@@ -1092,27 +1168,45 @@ def auth(username: str, password: str):
     
 
 @cl.on_message
-async def main(message: cl.Message):
-	historial = [ {"role":"system", "content":"""Eres un chatbot dentro de una plataforma educativa inteligente universitaria centrada en la ingeniería informática, y en español. 
-					Eres útil y honesto, NO inventas información ni mientes, si  no sabes una respuesta lo dices. 
-					Pueden darte, contexto, información o instrucciones adicionale. DEBES USAR CUALQUIER INFORMACIÓN QUE RECIBAS PARA GENERAR TUS RESPUESTAS Y SEGUIR LAS INSTRUCCIONES QUE RECIBAS. 
-					Ten en cuenta que el contexto y las reglas solo sirven para generar tu respuesta si es el último mensaje,NO LO USES EN SIGUIENTES MENSAJES DESPUÉS DE HABERLO USADO."""}]
-	respuesta = router(message.content, historial)
-	#await cl.Message(content=f"Hola {cl.context.session.user.identifier}!").send()
-	await cl.Message(content=respuesta).send()
+async def enviarMensajes(message: cl.Message):
+
+		respuesta = await router(message.content, historial, False)
+		#await cl.Message(content=f"Hola {cl.context.session.user.identifier}!").send()
+		await cl.Message(content=respuesta).send()
 	
+
+
 @cl.on_chat_start
 async def inicio():
 	# Se ejecuta cuando el usuario abre el chat
-	await cl.Message( content="Bienvenido! Soy un tutor virtual inteligente, mi objetivo es ayudarte con PPSS, ¿ En qué puedo ayudarte hoy?").send()
 
 	if cl.context.session.user:
-		userId =cl.context.session.user.metadata["userId"] 
-		print("Usuario: "+ userId)
+		usuarioId =cl.context.session.user.metadata["userId"] 
+		print("Usuario: "+ str(usuarioId))
 	
+	await cl.Message( content="Bienvenido! Soy un tutor virtual inteligente, mi objetivo es ayudarte con PPSS, ¿ En qué puedo ayudarte hoy?").send()
+
+	actions = [
+        cl.Action(
+            name="seguimiento",
+            label="Ver tu seguimiento",
+			payload={"action": "seguimiento"},
+            icon="smile",
+			collapse=False
+
+        )
+    ]
+
+	await seleccionarTemasARecordar(historial, False)
+
+	
+	await cl.Message(content="", actions=actions).send()
 
 
-
+@cl.action_callback("seguimiento")
+async def onSeguimiento(action: cl.Action):
+   await seguimientoAlumnoChainlit()
+   
 
 @cl.on_stop
 async def stop():
@@ -1122,11 +1216,82 @@ async def fin():
 	# Se ejecuta cuando el usuario cierra el chat
 	print("Chat cerrado")
 
+
+
+####### Módulo mostrar progreso en interfaz gráfica ##############
+
+async def seguimientoAlumnoChainlit():
+
+	querySelect = "SELECT TemaId,NivelConocimiento FROM Conocimientos where usuarioId = ?"
+	cursor.execute(querySelect, (usuarioId, ))
+	asignaturas = cursor.fetchall() 
+	if(len(asignaturas) == 0):
+		return "No hay registros sobre el conocimiento del usuario. Practique, pidiendo a Qwen que le haga preguntas sobre el tema que quiera repasar."
+	mensaje = ""
+
+	for asinatura in asignaturas:
+		print("asinatura: "+str(asinatura))
+		temaId = asinatura[0]
+		tema = encontrarTemaNombre(temaId)
+		conocimiento = asinatura[1]
+		#ToDo: Buscar valores para cambiar el 0.8
+		if (conocimiento <= -0.8):
+			mensaje += tema+": El usuario ha fallado muchas preguntas, conocimientos muy bajos sobre el tema. Se aconseja estudiar el tema. Conocimiento registrado actual: "+str(conocimiento) + "\n\n"
+		elif(conocimiento < 0 and conocimiento > -0.8 ):
+			mensaje += tema+": Ligeramente por debajo del promedio, se aconseja repasar el tema.  Conocimiento registrado actual: "+str(conocimiento) + "\n\n"
+		elif( conocimiento >= 0 and conocimiento <= 0.8):
+			mensaje += tema+": Ligeramente por encima del promedio, se aconseja seguir practicando el tema. Conocimiento registrado actual: "+str(conocimiento) +  "\n\n"
+		else:
+			mensaje += tema+": El usuario ha acertado muchas preguntas sobre el tema."+str(conocimiento)+ "\n\n"
+		
+		queryPreguntasContar = "SELECT COUNT(*) FROM PreguntasUsuarios WHERE UsuarioId = ? AND Acierto = True AND PreguntaId IN (SELECT id FROM Preguntas WHERE TemaId = ?)"
+		cursor.execute(queryPreguntasContar, (usuarioId, temaId))
+		numPreguntasAcertadas = cursor.fetchall()[0][0]
+
+		queryPreguntasContar = "SELECT COUNT(*) FROM PreguntasUsuarios WHERE UsuarioId = ? AND Acierto = False AND PreguntaId IN (SELECT id FROM Preguntas WHERE TemaId = ?)"
+		cursor.execute(queryPreguntasContar, (usuarioId, temaId))
+		numPreguntasFalladas = cursor.fetchall()[0][0]
+		mensaje += "Número de preguntas acertadas sobre el tema: "+str(numPreguntasAcertadas) + "\n\n"
+		mensaje += "Número de preguntas falladas sobre el tema: "+str(numPreguntasFalladas) + "\n\n"
+		mensaje += "---------------------------------------\n\n"
+
+	await cl.Message(content=mensaje).send()
+
+
+
+
+async def mostrarPreguntaTestChainlit( preguntaTest, nuevaPregunta = True):
+
+	solucion = preguntaTest[5].strip().upper()
+
+	respuestaAlumno = await cl.AskActionMessage(
+		content = preguntaTest[0],
+		actions = [
+			cl.Action( name= "A", label= preguntaTest[1], payload= {"opcion":"A"}),
+			cl.Action( name= "B", label= preguntaTest[2], payload= {"opcion":"B"}),
+			cl.Action( name= "C", label= preguntaTest[3], payload= {"opcion":"C"}),
+			cl.Action( name= "D", label= preguntaTest[4], payload= {"opcion":"D"})
+
+		],
+		timeout = 60000
+	).send()
+
+	nivelSeguridad = await  cl.AskActionMessage(
+		content =  "¿ Cómo de seguro está de su respuesta? No está seguro (1), seguro a medias (2) , bastante seguro (3)",
+		actions = [
+			cl.Action( name = "1", label= "1", payload = {"numero": "1"}),
+			cl.Action( name = "2", label= "2", payload = {"numero": "2"}),
+			cl.Action( name = "3", label= "3", payload = {"numero": "3"})
+		]
+	).send()
+		
+
+	return await compararRespuestasTest(respuestaAlumno["payload"]["opcion"], int(nivelSeguridad["payload"]["numero"]), preguntaTest,nuevaPregunta, False)
+
+
+
+
+
 if __name__ == '__main__':
 	mainConsole()
-
-
-
-
-
 
