@@ -7,6 +7,7 @@ import json
 import re 
 import random
 import sys
+import asyncio
 from datetime import datetime, timedelta
 
 import chainlit as cl
@@ -29,11 +30,7 @@ dbConnection = sqlite3.connect('sqlite3DB.db')
 cursor = dbConnection.cursor()
 
 
-
-#preguntaIRT = [] 
 usuarioId = -1
-
-
 
 ## parámetros por consola ##
 llms = {
@@ -330,11 +327,12 @@ def generarPregunta(consulta, historial): #En lugar de usar retrieval, se devuel
 			conocimientoAlumno = 0
 
 	datosPdf = obtenerDatosTema(temaPregunta)
+	nivelBloom = nivel_bloom(conocimientoAlumno)
 
 	try:
 		with open("prompts/promptPreguntar.txt", "r", encoding="utf-8") as f:
 			plantilla = f.read()
-			promptPreguntar = plantilla.replace("{Consulta}", consulta).replace("{datosPdf}" , datosPdf).replace("{conocimientoAlumno}",str(conocimientoAlumno))
+			promptPreguntar = plantilla.replace("{Consulta}", consulta).replace("{datosPdf}" , datosPdf).replace("{conocimientoAlumno}",str(conocimientoAlumno).replace("{nivelBloom}",str(nivelBloom)))
 		
 	except FileNotFoundError:
 		print( "Error: archivo con el prompt no encontrado. No es posible generar la pregunta")
@@ -672,7 +670,6 @@ async def mostrarPreguntaTest(preguntaTest, nuevaPregunta = True): ###booleano p
 async def compararRespuestasTest(alumnoRespuesta, nivelSeguridad, preguntaTest, nuevaPregunta = True, desdeConsola = True):
 
 	solucion = preguntaTest[5].strip().upper()
-	print("AL ACABAR AQUÍ ME LLEGA: "+ str(preguntaTest))
 	temaPregunta = preguntaTest[6]
 	a = preguntaTest[7]
 	b = preguntaTest[8]
@@ -879,7 +876,7 @@ async  def recordarTemas( temasRecordar,historial, desdeConsola = True):
 					preguntaTest.append(dato[2])
 					preguntaTest.append(dato[3])
 					if desdeConsola:
-						resultadoTest = mostrarPreguntaTest(preguntaTest, False)
+						resultadoTest = await mostrarPreguntaTest(preguntaTest, False)
 					else:
 						resultadoTest = await mostrarPreguntaTestChainlit(preguntaTest, False)
 					if resultadoTest == "CORRECTO":
@@ -1037,11 +1034,11 @@ async def router(consulta,historial,llamadaDesdeConsola = False): #función enca
 	match tipoMensaje:
 		case  "NORMAL":
 			response = sendMessage(consulta,True, historial)
-			return response
 			print(response)
+			return response
 		case "RAG_EXAM":
 			if llamadaDesdeConsola:
-				cuestionario(consulta, historial, llamadaDesdeConsola)
+				await cuestionario(consulta, historial, llamadaDesdeConsola)
 
 			else:
 				return await cuestionario(consulta, historial, llamadaDesdeConsola)
@@ -1095,7 +1092,7 @@ async def chat(historial, recordarUnaVez):
 
 	while(consulta != "0"):
 	
-		router(consulta,historial, True)
+		await router(consulta,historial, True)
 		print("..................................")
 		consulta = input()
 		print("..................................")
@@ -1130,27 +1127,38 @@ async def menu(historial, recordarUnaVez):
 async def mainConsole():
 	recordarUnaVez =True #Variable booleana que comprueba que el recordatorio solo se llame una vez
 	historial = [
-		{"role":"system", "content":"""Eres un chatbot dentro de una plataforma educativa inteligente universitaria centrada en la ingeniería informática, y en español. Eres útil y honesto, NO inventas información ni mientes, si  no sabes una respuesta lo dices. 
-		Pueden darte, contexto, información o instrucciones adicionale. DEBES USAR CUALQUIER INFORMACIÓN QUE RECIBAS PARA GENERAR TUS RESPUESTAS Y SEGUIR LAS INSTRUCCIONES QUE RECIBAS. 
-		Ten en cuenta que el contexto y las reglas solo sirven para generar tu respuesta si es el último mensaje,NO LO USES EN SIGUIENTES MENSAJES DESPUÉS DE HABERLO USADO."""}]
+		{"role":"system", "content":"""Eres un chatbot dentro de una plataforma educativa inteligente universitaria centrada en la ingeniería informática, y en español. 
+		Eres útil y honesto, sólo das información real y si desconoces una respuesta a una pregunta lo admites.
+
+		#### Instrucciones generales a seguir ##################### 
+
+		-Pueden darte, contexto, información o instrucciones adicionales: DEBES USAR CUALQUIER INFORMACIÓN QUE RECIBAS PARA GENERAR TUS RESPUESTAS Y SEGUIR LAS INSTRUCCIONES QUE RECIBAS EN CADA MENSAJE.
+
+		-Ten en cuenta que el contexto y las reglas solo sirven para generar la respuesta a la consulta del usuario, si las lees del historial de anteriores mensajes que ya has respondido abstente de seguirlas."""}]
 
 	#historial se genera al iniciar la aplicación y se inserta en el la conversación y se trata como variable local en lugar de global.
 
 
 	if login():
-		menu(historial, recordarUnaVez)
+		await menu(historial, recordarUnaVez)
 	else:
 		print("ERROR DURANTE EL LOGIN")
-		mainConsole()
+		await mainConsole()
 
 
 
 ########## interfaz gráfica chainlit ############################
 
-historial = [ {"role":"system", "content":"""Eres un chatbot dentro de una plataforma educativa inteligente universitaria centrada en la ingeniería informática, y en español. 
-					Eres útil y honesto, NO inventas información ni mientes, si  no sabes una respuesta lo dices. 
-					Pueden darte, contexto, información o instrucciones adicionale. DEBES USAR CUALQUIER INFORMACIÓN QUE RECIBAS PARA GENERAR TUS RESPUESTAS Y SEGUIR LAS INSTRUCCIONES QUE RECIBAS. 
-					Ten en cuenta que el contexto y las reglas solo sirven para generar tu respuesta si es el último mensaje,NO LO USES EN SIGUIENTES MENSAJES DESPUÉS DE HABERLO USADO."""}]
+historial = [
+		{"role":"system", "content":"""Eres un chatbot dentro de una plataforma educativa inteligente universitaria centrada en la ingeniería informática, y en español. 
+		Eres útil y honesto, sólo das información real y si desconoces una respuesta a una pregunta lo admites.
+
+		#### Instrucciones generales a seguir ##################### 
+		
+		-Pueden darte, contexto, información o instrucciones adicionales: DEBES USAR CUALQUIER INFORMACIÓN QUE RECIBAS PARA GENERAR TUS RESPUESTAS Y SEGUIR LAS INSTRUCCIONES QUE RECIBAS EN CADA MENSAJE.
+
+		-Ten en cuenta que el contexto y las reglas solo sirven para generar la respuesta a la consulta del usuario, si las lees del historial de anteriores mensajes que ya has respondido abstente de seguirlas."""}]
+
 @cl.password_auth_callback
 def auth(username: str, password: str):
 
@@ -1293,5 +1301,5 @@ async def mostrarPreguntaTestChainlit( preguntaTest, nuevaPregunta = True):
 
 
 if __name__ == '__main__':
-	mainConsole()
+	asyncio.run(mainConsole())
 
