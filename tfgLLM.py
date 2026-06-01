@@ -10,6 +10,7 @@ import sys
 import asyncio
 from datetime import datetime, timedelta
 
+import time
 import chainlit as cl
 from chainlit.input_widget import TextInput
 
@@ -90,12 +91,13 @@ def encontrarTemaNombre(temaId):
 ######################  LLM  ####################################
 
 def sendMessage(message, GuardarHistorial, historial = "" ):
-	n = 5
-
-	if(len(historial) >= n):
+	historialElementos = 6
+	maxTokens = 4042
+	if(len(historial) >= historialElementos):
 		#Para evitar superar el max_tokens, se borran mensajes antiguos del historial. 
+		#me quedo el primero + los dos últimos
 		auxHistorial = historial[0]
-		historial[:] = [auxHistorial] + historial[3:]
+		historial[:] = [auxHistorial] + historial[4:]
 
 	if GuardarHistorial: 
 		#if len(contexto) != 0 :
@@ -107,7 +109,7 @@ def sendMessage(message, GuardarHistorial, historial = "" ):
 			model=llmName,
 			messages = historial, 
 			temperature=0.3,
-			max_tokens=2048
+			max_tokens=maxTokens
 			
 		)
 	
@@ -117,7 +119,7 @@ def sendMessage(message, GuardarHistorial, historial = "" ):
 			model=llmName,
 			messages =  [{"role": "user", "content": message}],
 			temperature=0.3,
-			max_tokens=2048
+			max_tokens=maxTokens
 		)
 	respuestaMssg = resp.choices[0].message.content
 	respuestaMssg = respuestaMssg.split("</think>").pop().strip()  #Divido string en dos partes (pensamiento de la IA y su respuesta), me quedo solo la última y elimino espacios, saltos de línea etc
@@ -1091,8 +1093,11 @@ async def chat(historial, recordarUnaVez):
 	print("..................................")
 
 	while(consulta != "0"):
-	
+		inicio = time.time()
 		await router(consulta,historial, True)
+		latencia = time.time() - inicio
+
+		print("LATENCIA ---->"+str(latencia))
 		print("..................................")
 		consulta = input()
 		print("..................................")
