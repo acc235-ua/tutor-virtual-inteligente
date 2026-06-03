@@ -9,7 +9,7 @@ import random
 import sys
 import asyncio
 from datetime import datetime, timedelta
-
+import os
 import time
 import chainlit as cl
 from chainlit.input_widget import TextInput
@@ -36,7 +36,8 @@ usuarioId = -1
 ## parámetros por consola ##
 llms = {
 "1": "Qwen/Qwen3-0.6B", #versión ligera y simple
-"2": "Qwen/Qwen2.5-7B-Instruct" #versión más potente
+#"2": "Qwen/Qwen2.5-7B-Instruct" #versión más potente
+"2": "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8"
 }
 
 llmName = ""
@@ -55,6 +56,10 @@ else:
 
 
 ##############  funciones auxiliares ##################################
+
+#elimina acentos y otros carácteres especiales 
+def limpiar_surrogates(texto: str) -> str:
+    return texto.encode('utf-8', errors='replace').decode('utf-8')
 
 
 
@@ -91,8 +96,11 @@ def encontrarTemaNombre(temaId):
 ######################  LLM  ####################################
 
 def sendMessage(message, GuardarHistorial, historial = "" ):
+
+	#message = limpiar_surrogates(message) #eliminar acentos
+
 	historialElementos = 6
-	maxTokens = 4042
+	maxTokens = 8192
 	if(len(historial) >= historialElementos):
 		#Para evitar superar el max_tokens, se borran mensajes antiguos del historial. 
 		#me quedo el primero + los dos últimos
@@ -109,6 +117,7 @@ def sendMessage(message, GuardarHistorial, historial = "" ):
 			model=llmName,
 			messages = historial, 
 			temperature=0.3,
+			top_p=0.9,
 			max_tokens=maxTokens
 			
 		)
@@ -119,12 +128,14 @@ def sendMessage(message, GuardarHistorial, historial = "" ):
 			model=llmName,
 			messages =  [{"role": "user", "content": message}],
 			temperature=0.3,
+			top_p=0.9,
 			max_tokens=maxTokens
 		)
 	respuestaMssg = resp.choices[0].message.content
 	respuestaMssg = respuestaMssg.split("</think>").pop().strip()  #Divido string en dos partes (pensamiento de la IA y su respuesta), me quedo solo la última y elimino espacios, saltos de línea etc
 	if GuardarHistorial:
 		historial.append({"role": "assistant", "content": respuestaMssg})
+
 	return respuestaMssg
 
 
@@ -328,14 +339,15 @@ def generarPregunta(consulta, historial): #En lugar de usar retrieval, se devuel
 	else:
 			conocimientoAlumno = 0
 
-	datosPdf = obtenerDatosTema(temaPregunta)
+	#datosPdf = obtenerDatosTema(temaPregunta)
+	datosPdf = ragPreguntas(temaId)
 	nivelBloom = nivel_bloom(conocimientoAlumno)
 
 	try:
 		with open("prompts/promptPreguntar.txt", "r", encoding="utf-8") as f:
 			plantilla = f.read()
 			promptPreguntar = plantilla.replace("{Consulta}", consulta).replace("{datosPdf}" , datosPdf).replace("{conocimientoAlumno}",str(conocimientoAlumno).replace("{nivelBloom}",str(nivelBloom)))
-		
+			print("Prompt para generar pregunta de desarrollo: ", promptPreguntar)
 	except FileNotFoundError:
 		print( "Error: archivo con el prompt no encontrado. No es posible generar la pregunta")
 		return
@@ -344,7 +356,7 @@ def generarPregunta(consulta, historial): #En lugar de usar retrieval, se devuel
 		print( "Error: "+str(e))
 		return
 
-	respuesta = sendMessage(promptPreguntar,False,historial).strip()
+	respuesta = sendMessage(promptPreguntar,True,historial).strip()
 	
 
 	jsonLimpio = limpiar_respuesta_json(respuesta)
@@ -393,11 +405,10 @@ def calcularNumeroPreguntasCuestionario(consulta,listaPalabras):
 			return
 	return numPreguntas
 
-async def cuestionario(consulta,historial, desdeConsola = True):
+async def cuestionario(consulta,historial, desdeConsola = True, inicio = 0):
 	## 1. Calcular número de preguntas a realizar al usuario.
 	## 2. Generar las preguntas.
 	## 3. Comprobar respuestas y actualizar el conocimiento que el sistema tiene sobre el alumno.
-
 	aciertos = 0
 	listaPalabras = consulta.split(" ")
 
@@ -412,17 +423,17 @@ async def cuestionario(consulta,historial, desdeConsola = True):
 	numPreguntas = calcularNumeroPreguntasCuestionario(consulta, listaPalabras)
 	for i in range(0,numPreguntas) :
 
-		if ("desarrollo" in listaPalabras):
-			tipoPregunta = "desarrollo"
-		elif ("test" in listaPalabras or "tests" in listaPalabras):
-			tipoPregunta = "test"
-		else: 
+		if tipoPreguntas == "ramdon":
 			tipoPregunta = random.choice(["desarrollo", "test"])
+		else:
+			tipoPregunta = tipoPreguntas
 
 
 		if tipoPregunta == "desarrollo": #array con los datos: 0. pregunta , 1. valor a ,2. valor b, 3. tema pregunta
 			
 			preguntaIRT = generarPregunta(consulta,historial)
+			latencia = time.time() - inicio
+			print("Latencia generación pregunta: "+str(latencia)+" segundos")
 			if desdeConsola:
 				print(preguntaIRT[0])
 				respuesta = input()
@@ -441,14 +452,17 @@ async def cuestionario(consulta,historial, desdeConsola = True):
 
 			
 		elif tipoPregunta == "test":
-
 			preguntaTest = generarPreguntaTest(consulta, historial)
+			latencia = time.time() - inicio
+			print("Latencia generación pregunta test: "+str(latencia)+" segundos")
 			if desdeConsola:
 				solucion = await mostrarPreguntaTest(preguntaTest,True)
 			else:
 				solucion = await mostrarPreguntaTestChainlit(preguntaTest,True)
 
-
+		else:
+			print("Error: tipo de pregunta no reconocido")
+			return ""
 
 		if solucion.startswith("CORRECTO"):
 			aciertos += 1
@@ -580,6 +594,8 @@ def irt(conocimientoAlumno, preguntaIRT,preguntaTest): ##fórmula de evaluación
 ######################################### PREGUNTAS TIPO TEST ############################################
 
 
+
+
 def nivel_bloom(conocimiento):
 	#Conforme un alumno avance en un tema  las preguntas irán subiendo al siguiente nivel dela taxonomía de Bloom.
     if conocimiento < 0.5:
@@ -591,6 +607,19 @@ def nivel_bloom(conocimiento):
     else:
         return 4  # Analizar
 
+
+
+def ragPreguntas(temaId):
+
+	query = "select descripcion from Temarios WHERE id = ?"
+	cursor.execute(query,(temaId, ) )
+	descripcionTema = cursor.fetchall()[0][0]
+	
+	conceptosClave = descripcionTema.split(",") #divido los conceptos del tema en una lista
+	conceptoElegido = random.choice(conceptosClave) #escojo un concepto al azar para generar la pregunta
+	chunks = buscarSimilitud(conceptoElegido) #busco los chunks más relacionados con el concepto elegido, para generar la pregunta a partir de esos chunks.
+	contexto = ' '.join(chunks)	
+	return contexto	
 
 def generarPreguntaTest(consulta, historial):
 	
@@ -607,15 +636,15 @@ def generarPreguntaTest(consulta, historial):
 	else:
 			conocimientoAlumno = 0
 
-	datosPdf = obtenerDatosTema(temaPregunta)
+	#datosPdf = obtenerDatosTema(temaPregunta)
+	datosPdf = ragPreguntas(temaId)
 	try:
 		with open("prompts/promptTest.txt", "r", encoding="utf-8") as f: 
 
 			plantilla = f.read()
 			nivelBloom = nivel_bloom(conocimientoAlumno)
 			promptTest = plantilla.replace("{Consulta}", consulta).replace("{datosPdf}" , datosPdf).replace("{conocimientoAlumno}",str(conocimientoAlumno)).replace("{nivelBloom}", str(nivelBloom))
-
-
+			print("Prompt para generar pregunta test: ", promptTest)
 	except FileNotFoundError:
 		print( "Error: archivo con el prompt no encontrado. No es posible generar la pregunta")
 		return
@@ -623,8 +652,9 @@ def generarPreguntaTest(consulta, historial):
 		print( "Error: "+str(e))
 		return
 	
-	respuesta = sendMessage(promptTest,False, historial)
+	respuesta = sendMessage(promptTest,True, historial)
 	jsonLimpio = limpiar_respuesta_json(respuesta)
+	
 	data = json.loads(jsonLimpio)
 	preguntaTest = []
 	preguntaTest.append(data["Pregunta"].strip())
@@ -692,7 +722,6 @@ async def compararRespuestasTest(alumnoRespuesta, nivelSeguridad, preguntaTest, 
 
 	temaId = encontrarTemaId(temaPregunta)  
 	if nuevaPregunta:
-		print("INSERTO AQUÍ")
 		query = "INSERT INTO PREGUNTAS (Pregunta,TemaId,Tipo,Solucion,a,b, OpcionA, OpcionB, OpcionC, OpcionD) VALUES ( ? , ? ,? ,?, ?, ?, ?, ?, ?, ?);"
 		cursor.execute(query, (preguntaTest[0],temaId,"Test",solucion, a, b, preguntaTest[1], preguntaTest[2], preguntaTest[3], preguntaTest[4]))
 		dbConnection.commit()
@@ -700,7 +729,6 @@ async def compararRespuestasTest(alumnoRespuesta, nivelSeguridad, preguntaTest, 
 		query = "INSERT INTO PreguntasUsuarios (PreguntaId,UsuarioId, Acierto) VALUES (?,? , ?) "
 		cursor.execute(query,(cursor.lastrowid,usuarioId,evaluacion == "CORRECTO"))
 		dbConnection.commit()
-		print("ANTES DE ACTUALIZAR CONOCIMIENTO")
 	preguntaIRT = [preguntaTest[0], a, b, temaPregunta] 
 	actualizarNivelCononocimientoAlumno(evaluacion,preguntaIRT, temaId, True, nivelSeguridad) 
 	return evaluacion
@@ -998,6 +1026,45 @@ def seguimientoAlumno():
 
 
 
+########### Añadir Temas a la BD #####################
+
+def crearTema():
+	print("Escriba el nombre del nuevo tema: ")
+	nombreTema = input()
+	print("Esriba el path del PDF( pdf/ppss/nombrepdf.pdf): ")
+	pathPDF = input()
+	if not os.path.isfile(pathPDF):
+		print("Error: el path del PDF no es válido.")
+		return
+	elif not pathPDF.endswith(".pdf"):
+		print("Error: el archivo debe ser un PDF.")
+		return
+
+	print("Escriba la descripción del nuevo tema: ")
+	descripcionTema = input()
+	print("Escriba la fecha de finalización del tema (AAAA/MM/DD): ")
+	fechaFinalizacion = input()
+	query = "INSERT INTO Temarios (nombre,path , descripcion,fecha) VALUES (?, ?, ?, ?);"
+	cursor.execute(query, (nombreTema, pathPDF, descripcionTema, fechaFinalizacion))
+	dbConnection.commit()
+	print("Tema creado correctamente")
+
+def actualizarTema():
+
+	print("Nombre del tema del cual actualizará la descripción: ")
+	temaNombre = input()
+	temaId = encontrarTemaId(temaNombre)
+
+	if temaId:
+		print("Escriba la nueva descripción del tema: ")
+		nuevaDescripcion = input()
+		limpiar_surrogates(nuevaDescripcion)
+		query = "UPDATE Temarios SET Descripcion = ? WHERE id = ?"
+		cursor.execute(query, (nuevaDescripcion, temaId))
+		dbConnection.commit()
+	else:
+		print("Tema no encontrado.")
+		return
 
 
 
@@ -1010,6 +1077,7 @@ def seguimientoAlumno():
 
 
 async def router(consulta,historial,llamadaDesdeConsola = False): #función encargada de redirigir a donde se debe tratar el mensaje, según su contenido.
+	inicio = time.time()
 	response = ""
 	consulta = consulta.lower() #quitar mayúsculas para poder simplificar la detección de palabras clave del router
 		#si se detecta alguna estructura que sea "HAZME UNA PREGUNTA" , "PREGÚNTAME" ... , no es necesario usar el prompt, es obvio lo que quiere el usuario.
@@ -1039,11 +1107,13 @@ async def router(consulta,historial,llamadaDesdeConsola = False): #función enca
 			print(response)
 			return response
 		case "RAG_EXAM":
+
 			if llamadaDesdeConsola:
-				await cuestionario(consulta, historial, llamadaDesdeConsola)
+				
+				await cuestionario(consulta, historial, llamadaDesdeConsola, inicio)
 
 			else:
-				return await cuestionario(consulta, historial, llamadaDesdeConsola)
+				return await cuestionario(consulta, historial, llamadaDesdeConsola, inicio)
 
 			
 		case "RAG_RESUME":
@@ -1093,11 +1163,11 @@ async def chat(historial, recordarUnaVez):
 	print("..................................")
 
 	while(consulta != "0"):
-		inicio = time.time()
+		inicioTiempo = time.time()
 		await router(consulta,historial, True)
-		latencia = time.time() - inicio
-
-		print("LATENCIA ---->"+str(latencia))
+		finalTiempo = time.time()
+		tiempoRespuesta = finalTiempo - inicioTiempo
+		print("Tiempo de respuesta: "+str(tiempoRespuesta)+" segundos")
 		print("..................................")
 		consulta = input()
 		print("..................................")
@@ -1106,14 +1176,16 @@ async def chat(historial, recordarUnaVez):
 	return recordarUnaVez #devuelvo el valor para actualizarlo en el menú principal y que afecte a futuras llamadas ala función. 
 async def menu(historial, recordarUnaVez):
 	option =  "0"
-	while(option != "4"):
+	while(option != "6"):
 		print("######################################################")
 		print(" 					MENÚ PRINCIPAL")
 		print("######################################################")
 		print("1. Hablar con qwen")
 		print("2. Comprobar tu nivel")
 		print("3. Generar nuevos embeddings")
-		print("4. Salir")
+		print("4. Añadir un nuevo tema a la base de datos")
+		print("5. Actualizar descripción de un tema")
+		print("6. Salir")
 		print("#####################################################")
 		print("Seleccione una opcion")
 
@@ -1125,6 +1197,10 @@ async def menu(historial, recordarUnaVez):
 		elif(option == "3"):
 			generarEmbedingsTemas()
 		elif(option == "4" ):
+			crearTema()
+		elif(option == "5"):
+			 actualizarTema()
+		elif(option == "6"):
 			print("¡Adiós!")
 		else:
 			print("Elija una opcion correcta")
@@ -1149,6 +1225,19 @@ async def mainConsole():
 	else:
 		print("ERROR DURANTE EL LOGIN")
 		await mainConsole()
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
