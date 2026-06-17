@@ -14,16 +14,16 @@ import time
 import chainlit as cl
 from chainlit.input_widget import TextInput
 
-
+import httpx
 
 ############ variables globales ################################
 
 ### llm ###
-client = OpenAI(
-    base_url="http://localhost:8000/v1",
+#client = OpenAI(
+    #base_url="http://localhost:8000/v1",
    # api_key="dummy"  Si no pongo api key
-        api_key="claveSegura"
-)
+     #   api_key="claveSegura"
+#)
 
 
 ####   conexión a la BD ####
@@ -49,10 +49,11 @@ if(len(sys.argv) >= 3):
 			llmName = llms[sys.argv[n+1]]
 			break
 	if llmName == "":
-		print ("LLM no reconocido, se usará la versión por defecto: "+llms["1"])
-		llmName = llms["1"]
+		print ("LLM no reconocido, se usará la versión por defecto: "+llms["2"])
+		llmName = llms["2"]
 else: 
-	llmName = llms["1"] #versión por defecto, la de menos consumo.
+	llmName = llms["2"] #versión por 
+	print("LLM escogido:"+llmName)
 
 
 ##############  funciones auxiliares ##################################
@@ -113,25 +114,42 @@ def sendMessage(message, GuardarHistorial, historial = "" ):
 	
 			
 		historial.append( {"role":"user", "content" : message} )
-		resp = client.chat.completions.create(
-			model=llmName,
-			messages = historial, 
-			temperature=0.3,
-			top_p=0.9,
-			max_tokens=maxTokens
+		#resp = client.chat.completions.create(
+			#model=llmName,
+			#messages =  [{"role": "user", "content": message}],
+			#temperature=0.3,
+			#max_tokens=maxTokens
+		resp = httpx.post(
+			"http://localhost:8000/v1/chat/completions",
+			headers={
+				"Authorization": "Bearer claveSegura"},
+			json={
+			"model": llmName,
+			"messages": historial,
+			"temperature": 0.3,
+			"max_tokens": maxTokens
+			},
+			timeout=240.0
 			
 		)
 	
+	
 	else: 
-		resp = client.chat.completions.create(
-			#model="Qwen/Qwen3-0.6B",
-			model=llmName,
-			messages =  [{"role": "user", "content": message}],
-			temperature=0.3,
-			top_p=0.9,
-			max_tokens=maxTokens
+		
+		resp = httpx.post(
+			"http://localhost:8000/v1/chat/completions",
+			headers={
+				"Authorization": "Bearer claveSegura"},
+			json={
+			"model": llmName,
+			"messages": [{"role": "user", "content": message}],
+			"temperature": 0.3,
+			"max_tokens": maxTokens
+			},
+			timeout=240.0
 		)
-	respuestaMssg = resp.choices[0].message.content
+	data = resp.json()
+	respuestaMssg = data["choices"][0]["message"]["content"]
 	respuestaMssg = respuestaMssg.split("</think>").pop().strip()  #Divido string en dos partes (pensamiento de la IA y su respuesta), me quedo solo la última y elimino espacios, saltos de línea etc
 	if GuardarHistorial:
 		historial.append({"role": "assistant", "content": respuestaMssg})
@@ -347,7 +365,7 @@ def generarPregunta(consulta, historial): #En lugar de usar retrieval, se devuel
 		with open("prompts/promptPreguntar.txt", "r", encoding="utf-8") as f:
 			plantilla = f.read()
 			promptPreguntar = plantilla.replace("{Consulta}", consulta).replace("{datosPdf}" , datosPdf).replace("{conocimientoAlumno}",str(conocimientoAlumno).replace("{nivelBloom}",str(nivelBloom)))
-			print("Prompt para generar pregunta de desarrollo: ", promptPreguntar)
+			#print("Prompt para generar pregunta de desarrollo: ", promptPreguntar)
 	except FileNotFoundError:
 		print( "Error: archivo con el prompt no encontrado. No es posible generar la pregunta")
 		return
@@ -433,12 +451,16 @@ async def cuestionario(consulta,historial, desdeConsola = True, inicio = 0):
 			
 			preguntaIRT = generarPregunta(consulta,historial)
 			latencia = time.time() - inicio
-			print("Latencia generación pregunta: "+str(latencia)+" segundos")
+			#print("Latencia generación pregunta: "+str(latencia)+" segundos")
 			if desdeConsola:
 				print(preguntaIRT[0])
 				respuesta = input()
+				incioTiempoEvaluacion = time.time()
 				solucion = evaluarRespuesta(respuesta,historial, preguntaIRT)
+				finTiempoEvaluacion = time.time()
 				print(solucion)
+				latenciaEvaluacion = finTiempoEvaluacion - incioTiempoEvaluacion
+				#print("Latencia evaluación respuesta: "+str(latenciaEvaluacion)+" segundos")
 			else: 
 				respuesta = await cl.AskUserMessage(
 					content = preguntaIRT[0],
@@ -446,7 +468,7 @@ async def cuestionario(consulta,historial, desdeConsola = True, inicio = 0):
 
 				).send()
 				solucion = evaluarRespuesta(respuesta["output"],historial, preguntaIRT)
-				
+			
 				await cl.Message( content = solucion).send()
 		
 
@@ -466,14 +488,14 @@ async def cuestionario(consulta,historial, desdeConsola = True, inicio = 0):
 
 		if solucion.startswith("CORRECTO"):
 			aciertos += 1
-		if desdeConsola:
-			print("-----------------------------")
-			print ("Preguntas acertadas:"+ str(aciertos)+"/"+str(numPreguntas))
-			print("-----------------------------")
+	if desdeConsola:
+		print("-----------------------------")
+		print ("Preguntas acertadas:"+ str(aciertos)+"/"+str(numPreguntas))
+		print("-----------------------------")
 
-		else: 
+	else: 
 			
-			return  "Preguntas acertadas:"+ str(aciertos)+"/"+str(numPreguntas)
+		return  "Preguntas acertadas:"+ str(aciertos)+"/"+str(numPreguntas)
 
 
 
@@ -644,7 +666,7 @@ def generarPreguntaTest(consulta, historial):
 			plantilla = f.read()
 			nivelBloom = nivel_bloom(conocimientoAlumno)
 			promptTest = plantilla.replace("{Consulta}", consulta).replace("{datosPdf}" , datosPdf).replace("{conocimientoAlumno}",str(conocimientoAlumno)).replace("{nivelBloom}", str(nivelBloom))
-			print("Prompt para generar pregunta test: ", promptTest)
+			#print("Prompt para generar pregunta test: ", promptTest)
 	except FileNotFoundError:
 		print( "Error: archivo con el prompt no encontrado. No es posible generar la pregunta")
 		return
@@ -839,14 +861,14 @@ async def seleccionarTemasARecordar(historial, desdeConsola =  True) :
 		eleccionUsuario = ""
 		if desdeConsola:
 			while( eleccionUsuario != "s" and eleccionUsuario != "n" ):	
-				print("Hoy, se cumplen "+ str(semanas.days) + " semanas desde que en clase se terminó de estudiar los temas: " + str(temasRecordar) + " . ¿Desea repasar estos temarios?. (Escriba S o N)")
+				print("Hoy, se cumplen " + str(semanas.days) + " semanas desde que en clase se terminó de estudiar los temas: " + ', '.join(temasRecordar) + " . ¿Desea repasar estos temarios?. (Escriba S o N)")
 				eleccionUsuario = input().lower()
 				if( eleccionUsuario != "s" and eleccionUsuario != "n" ):
 					print("Escriba S o N")
 				elif(eleccionUsuario == "s"):
 					await recordarTemas(temasRecordar,historial)
 		else:  #si llamamos desde la interfaz gráfica.
-			await cl.Message(content="Hoy, se cumplen "+ str(semanas.days) + " semanas desde que en clase se terminó de estudiar los temas: " + str(temasRecordar) + " . ¿Desea repasar estos temarios?").send()
+			await cl.Message(content="Hoy, se cumplen "+ str(semanas.days) + " semanas desde que en clase se terminó de estudiar los temas: " + ', '.join(temasRecordar) +  " . ¿Desea repasar estos temarios?").send()
 			eleccionUsuario = {"output": ""}
 			while eleccionUsuario["output"].lower() not in ("s", "n", "sí","si","no"):
 				eleccionUsuario = await cl.AskUserMessage(content="Escriba sí o no", timeout=600).send()
@@ -1100,7 +1122,7 @@ async def router(consulta,historial,llamadaDesdeConsola = False): #función enca
 			return 
 		tipoMensaje = sendMessage(promptRouter, False)	
 		tipoMensaje = tipoMensaje.split("</think>").pop()
-	
+		#print("Tipo de mensaje: "+tipoMensaje)
 	match tipoMensaje:
 		case  "NORMAL":
 			response = sendMessage(consulta,True, historial)
@@ -1124,6 +1146,7 @@ async def router(consulta,historial,llamadaDesdeConsola = False): #función enca
 				#Buscar contexto con RAG y responder la pregunta del usuario con la información extraida de los PDF.
 				chunks = buscarSimilitud(consulta) #Retrieval de RAG
 				contexto = ' '.join(chunks)		
+				print("contexto: "+contexto)
 				#Insertar contexto -> Augmented Knowledge de R.A.G
 				try:
 					with open("prompts/promptInformar.txt", "r", encoding="utf-8") as f:
@@ -1167,7 +1190,7 @@ async def chat(historial, recordarUnaVez):
 		await router(consulta,historial, True)
 		finalTiempo = time.time()
 		tiempoRespuesta = finalTiempo - inicioTiempo
-		print("Tiempo de respuesta: "+str(tiempoRespuesta)+" segundos")
+	#print("Tiempo de respuesta: "+str(tiempoRespuesta)+" segundos")
 		print("..................................")
 		consulta = input()
 		print("..................................")
