@@ -14,7 +14,7 @@ LISTA DE TEMAS
 -Si no contiene información de ningún tema, puedes devolver cualquier tema al azar.
 
 
--RESPONDE CON EL SIGUIENTE FORMATO:  'tema [número_tema] ppss'
+-RESPONDE CON EL SIGUIENTE FORMATO:  'tema [número_tem] [nombre_tema]'
 -ABSTENTE DE AÑADIR NINGÚN TEXTO O EXPLACIÓN MÁS.
 
 
@@ -26,7 +26,7 @@ Independientemente del número de cosas que pida el prompt SÓLO DEBES RESPONDER
 
 ###############EJEMPLOS ( Few-Shot) ################
 
-petición: Hazme un resumen del tema uno
+petición: Hazme un resumen del tema un de ppss
 salida: tema 1 ppss
 
 petición: Genera tres preguntas difíciles para repasar el examen
@@ -35,6 +35,8 @@ salida: tema 5 ppss
 petición: Que es un CFG
 salida: tema 2 ppss
 
+petici�n: Quéson los derechos Schengen sobre la ley de proteccon de datos
+salida: tema 7 gpi
 PETICIÓN DEL USUARIO QUE DEBES RESPONDER:
 
 petición: {Peticion}

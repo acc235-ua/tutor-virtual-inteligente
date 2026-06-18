@@ -192,6 +192,7 @@ def selectorTemas(message): #Seleccionar tema más probable
 	respuestaIA = sendMessage(promptEscogerTema, False)
 	
 	temaEscogido = respuestaIA.split("</think>").pop().strip() 
+	print("tema: "+temaEscogido)
 	return temaEscogido
 
 ######################################################### RESUMIR #####################################################################################
@@ -1051,23 +1052,31 @@ def seguimientoAlumno():
 ########### Añadir Temas a la BD #####################
 
 def crearTema():
-	print("Escriba el nombre del nuevo tema: ")
+	print("Escriba el nombre o siglas de la asignatura del nuevo tema: ")
 	nombreTema = input()
-	print("Esriba el path del PDF( pdf/ppss/nombrepdf.pdf): ")
-	pathPDF = input()
+	print("Escriba el número del tema: ")
+	numeroTema = input()
+	if (not numeroTema.isdigit()):
+		print("Debe introducir un número")
+		return
+	print("Esriba el nombre del archivo que desea subir (fileName.pdf): ")
+	archivoPDF = input()
+
+	pathPDF =  "pdf/"+nombreTema+"/"+archivoPDF
+	print(pathPDF)
 	if not os.path.isfile(pathPDF):
 		print("Error: el path del PDF no es válido.")
 		return
 	elif not pathPDF.endswith(".pdf"):
 		print("Error: el archivo debe ser un PDF.")
 		return
-
-	print("Escriba la descripción del nuevo tema: ")
-	descripcionTema = input()
 	print("Escriba la fecha de finalización del tema (AAAA/MM/DD): ")
 	fechaFinalizacion = input()
+	print("Escriba la descripción del nuevo tema: ")
+	descripcionTema = input()
 	query = "INSERT INTO Temarios (nombre,path , descripcion,fecha) VALUES (?, ?, ?, ?);"
-	cursor.execute(query, (nombreTema, pathPDF, descripcionTema, fechaFinalizacion))
+	nombreBD = "tema "+numeroTema+" "+nombreTema
+	cursor.execute(query, (nombreBD, pathPDF, descripcionTema, fechaFinalizacion))
 	dbConnection.commit()
 	print("Tema creado correctamente")
 
@@ -1180,7 +1189,7 @@ async def chat(historial, recordarUnaVez):
 		await seleccionarTemasARecordar(historial)
 		recordarUnaVez = False
 		print("..............................")
-	print("Bienvenido! Soy un tutor virtual inteligente, mi objetivo es ayudarte con ppss")
+	print("Bienvenido!")
 	print("..................................")
 	consulta = input()
 	print("..................................")
@@ -1309,7 +1318,7 @@ async def inicio():
 		usuarioId =cl.context.session.user.metadata["userId"] 
 		print("Usuario: "+ str(usuarioId))
 	
-	await cl.Message( content="Bienvenido! Soy un tutor virtual inteligente, mi objetivo es ayudarte con PPSS, ¿ En qué puedo ayudarte hoy?").send()
+	await cl.Message( content="Bienvenido! Soy un tutor virtual inteligente, ¿ En qué puedo ayudarte hoy?").send()
 
 	actions = [
         cl.Action(
