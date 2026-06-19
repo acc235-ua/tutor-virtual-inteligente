@@ -180,13 +180,14 @@ def selectorTemas(message): #Seleccionar tema más probable
 	try:
 		with open("prompts/promptEscogerTema.txt", "r", encoding="utf-8") as f:
 			plantilla = f.read()
+			#print("PLANTILLA !!!"+plantilla)
 			promptEscogerTema = plantilla.replace("{ListaTemas}", temas).replace("{Peticion}" ,message )
-		
+			#print("-----> "+promptEscogerTema)
 	except FileNotFoundError:
 		print( "Error: archivo con el prompt no encontrado. No es posible generar la pregunta")
 		return
 	except Exception as e:
-		print( "Error: "+str(e))
+		print( " en prompt escoger tema: "+str(e))
 		return
 
 	respuestaIA = sendMessage(promptEscogerTema, False)
@@ -245,11 +246,11 @@ UMBRAL = 0.5 #similitud mínima requerida
 #Augmented knowledge-> Inject into promt
 #Generation 
 
-def buscarSimilitud(message): #Retrieval. -> RAG, lee embeddings del tema seleccionado 
+def buscarSimilitud(message,temaId): #Retrieval. -> RAG, lee embeddings del tema seleccionado 
 	messageEmbedding = modelEmb.encode(message) #transformar mensaje a secuencia de números, gracias a un modelo externo
 	query = "select * from embeddings WHERE TemaId = ? ;"
-	tema = selectorTemas(message)
-	temaId = encontrarTemaId(tema)
+	#tema = selectorTemas(message)
+	#temaId = encontrarTemaId(tema)
 	#print("tema seleccionado: ",tema)
 	cursor.execute(query,(temaId, ) )
 	chunks = cursor.fetchall()
@@ -344,9 +345,9 @@ def generarEmbedingsTemas():
 
 ############################## PREGUNTAR ###############################################################################################
 
-def generarPregunta(consulta, historial): #En lugar de usar retrieval, se devuelve el temario seleccionado completo.
+def generarPregunta(consulta, historial):
 	
-
+	print("genera pregunta")
 	temaPregunta = selectorTemas(consulta)
 	
 	temaId = encontrarTemaId(temaPregunta)
@@ -441,7 +442,6 @@ async def cuestionario(consulta,historial, desdeConsola = True, inicio = 0):
 
 	numPreguntas = calcularNumeroPreguntasCuestionario(consulta, listaPalabras)
 	for i in range(0,numPreguntas) :
-
 		if tipoPreguntas == "ramdon":
 			tipoPregunta = random.choice(["desarrollo", "test"])
 		else:
@@ -640,12 +640,11 @@ def ragPreguntas(temaId):
 	
 	conceptosClave = descripcionTema.split(",") #divido los conceptos del tema en una lista
 	conceptoElegido = random.choice(conceptosClave) #escojo un concepto al azar para generar la pregunta
-	chunks = buscarSimilitud(conceptoElegido) #busco los chunks más relacionados con el concepto elegido, para generar la pregunta a partir de esos chunks.
-	contexto = ' '.join(chunks)	
+	chunks = buscarSimilitud(conceptoElegido,temaId) #busco los chunks más relacionados con el concepto elegido, para generar la pregunta a partir de esos chunks.
+	contexto = ' '.join(chunks)
 	return contexto	
 
 def generarPreguntaTest(consulta, historial):
-	
 	temaPregunta = selectorTemas(consulta)
 	
 	temaId = encontrarTemaId(temaPregunta)
@@ -1153,9 +1152,10 @@ async def router(consulta,historial,llamadaDesdeConsola = False): #función enca
 			return response
 		case "RAG_INFO": 
 				#Buscar contexto con RAG y responder la pregunta del usuario con la información extraida de los PDF.
-				chunks = buscarSimilitud(consulta) #Retrieval de RAG
+				tema = selectorTemas(consulta)
+				temaId = encontrarTemaId(tema)
+				chunks = buscarSimilitud(consulta,temaId) #Retrieval de RAG
 				contexto = ' '.join(chunks)		
-				print("contexto: "+contexto)
 				#Insertar contexto -> Augmented Knowledge de R.A.G
 				try:
 					with open("prompts/promptInformar.txt", "r", encoding="utf-8") as f:
