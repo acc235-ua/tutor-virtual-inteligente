@@ -187,7 +187,7 @@ def selectorTemas(message): #Seleccionar tema más probable
 		print( "Error: archivo con el prompt no encontrado. No es posible generar la pregunta")
 		return
 	except Exception as e:
-		print( " en prompt escoger tema: "+str(e))
+		print( "Error en prompt escoger tema: "+str(e))
 		return
 
 	respuestaIA = sendMessage(promptEscogerTema, False)
@@ -214,7 +214,7 @@ def generarResumenes(consulta, historial):
 		return
 
 	except Exception as e:
-		print( "Error: "+str(e))
+		print( "Error en prompt resumir: "+str(e))
 		return
 
 
@@ -275,7 +275,7 @@ def buscarSimilitud(message,temaId): #Retrieval. -> RAG, lee embeddings del tema
 	else:
 		topN = len(similarities)
 	
-#	print("topN es", topN)
+	print("topN es", topN)
 
 	for s in similarities[:topN]: #Guardamos las mejores similitudes y ampliamos su contexto
 
@@ -426,6 +426,7 @@ def calcularNumeroPreguntasCuestionario(consulta,listaPalabras):
 	return numPreguntas
 
 async def cuestionario(consulta,historial, desdeConsola = True, inicio = 0):
+	
 	## 1. Calcular número de preguntas a realizar al usuario.
 	## 2. Generar las preguntas.
 	## 3. Comprobar respuestas y actualizar el conocimiento que el sistema tiene sobre el alumno.
@@ -1121,7 +1122,7 @@ async def router(consulta,historial,llamadaDesdeConsola = False): #función enca
 			with open("prompts/promptRouter.txt", "r", encoding="utf-8") as f:
 				plantilla = f.read()
 				promptRouter = plantilla.replace("{Consulta}", consulta)
-		
+
 		except FileNotFoundError:
 			print("Error: archivo con el prompt no encontrado. No es posible generar la pregunta")
 			return
@@ -1130,7 +1131,7 @@ async def router(consulta,historial,llamadaDesdeConsola = False): #función enca
 			return 
 		tipoMensaje = sendMessage(promptRouter, False)	
 		tipoMensaje = tipoMensaje.split("</think>").pop()
-		#print("Tipo de mensaje: "+tipoMensaje)
+	print("Tipo de mensaje: "+tipoMensaje)
 	match tipoMensaje:
 		case  "NORMAL":
 			response = sendMessage(consulta,True, historial)
@@ -1156,6 +1157,7 @@ async def router(consulta,historial,llamadaDesdeConsola = False): #función enca
 				temaId = encontrarTemaId(tema)
 				chunks = buscarSimilitud(consulta,temaId) #Retrieval de RAG
 				contexto = ' '.join(chunks)		
+		
 				#Insertar contexto -> Augmented Knowledge de R.A.G
 				try:
 					with open("prompts/promptInformar.txt", "r", encoding="utf-8") as f:
