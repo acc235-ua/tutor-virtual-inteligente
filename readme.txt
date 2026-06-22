@@ -14,3 +14,6 @@ pip install chainlit
 2º Ejecutar aplicación: 
 
  chainlit run tfgLLM.py --port 8001
+---------------------------
+
+Versión de python recomendada: Python 3.13.12
