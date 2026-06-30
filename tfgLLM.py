@@ -99,7 +99,7 @@ def encontrarTemaNombre(temaId):
 def sendMessage(message, GuardarHistorial, historial = "" ):
 
 	#message = limpiar_surrogates(message) #eliminar acentos
-
+	
 	historialElementos = 6
 	maxTokens = 8192
 	if(len(historial) >= historialElementos):
@@ -432,12 +432,13 @@ async def cuestionario(consulta,historial, desdeConsola = True, inicio = 0):
 	## 3. Comprobar respuestas y actualizar el conocimiento que el sistema tiene sobre el alumno.
 	aciertos = 0
 	listaPalabras = consulta.split(" ")
-
+	#print(listaPalabras)
 	if ("desarrollo" in listaPalabras):
 		tipoPreguntas = "desarrollo"
 	elif ("test" in listaPalabras or "tests" in listaPalabras):
 		tipoPreguntas = "test"
 	else: 
+
 		tipoPreguntas = "ramdon"
 	numPreguntas = calcularNumeroPreguntasCuestionario(consulta, listaPalabras)
 
@@ -738,10 +739,18 @@ async def compararRespuestasTest(alumnoRespuesta, nivelSeguridad, preguntaTest, 
 		evaluacion = "CORRECTO"
 	else:
 		evaluacion = "FALSO"
+		opciones = {
+			"A": preguntaTest[1],
+			"B": preguntaTest[2],
+			"C":preguntaTest[3],
+			"D":preguntaTest[4]
+		}
+		solucionTexto = opciones[solucion] 
 		if desdeConsola:
-			print("Respuesta incorrecta. La respuesta correcta es la opción: "+solucion)
+			print("Respuesta incorrecta. La respuesta correcta es la opción: "+solucion+": "+solucionTexto )
 		else:
-			await cl.Message(content = "Respuesta incorrecta. La respuesta correcta es la opción "+solucion ).send()
+
+			await cl.Message(content = "Respuesta incorrecta. La respuesta correcta es la opción "+solucion+": "+solucionTexto ).send()
 
 	temaId = encontrarTemaId(temaPregunta)  
 	if nuevaPregunta:
@@ -842,7 +851,7 @@ async def seleccionarTemasARecordar(historial, desdeConsola =  True) :
 	datos = cursor.fetchall() #lista de tuplas
 	temasRecordar = []
 	hoy =  datetime.now().date()
-	hoy = datetime.strptime("2020/4/13", '%Y/%m/%d').date()
+	#hoy = datetime.strptime("2020/4/13", '%Y/%m/%d').date()
 
 	for dato in datos: 
 		
